@@ -11,11 +11,13 @@ class regdb_rgb(BaseImageDataset):
     train in market1501 type data
     test in orignal regdb data
     """
-    dataset_dir = 'rgb_modify/'
+    dataset_dir = 'rgb_modify'
 
     def __init__(self, root,trial=0, verbose=True, **kwargs):
         super(regdb_rgb, self).__init__()
-        root='/data/yxb/datasets/ReIDData/RegDB/'
+        root = osp.abspath(osp.expanduser(root))
+        if osp.basename(root.rstrip(osp.sep)) == 'regdb_rgb':
+            root = osp.dirname(root)
         # print('regdb_rgb',trial)
         self.dataset_dir = osp.join(root, self.dataset_dir)
         self.train_dir = osp.join(self.dataset_dir, str(trial)+'/'+'bounding_box_train')

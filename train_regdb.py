@@ -39,7 +39,7 @@ from scipy.optimize import linear_sum_assignment
 start_epoch = best_mAP = 0
 
 def get_data(name, data_dir,trial=0):
-    root = osp.join(data_dir, name)
+    root = data_dir if name in ('regdb_ir', 'regdb_rgb') else osp.join(data_dir, name)
     dataset = datasets.create(name, root,trial=trial)
     return dataset
 
@@ -228,14 +228,14 @@ def extract_query_feat(model,query_loader,nquery):
 
 def process_test_regdb(img_dir, trial = 1, modal = 'visible'):
     if modal=='visible':
-        input_data_path = img_dir + 'idx/test_visible_{}'.format(trial) + '.txt'
+        input_data_path = osp.join(img_dir, 'idx', 'test_visible_{}.txt'.format(trial))
     elif modal=='thermal':
-        input_data_path = img_dir + 'idx/test_thermal_{}'.format(trial) + '.txt'
-    
+        input_data_path = osp.join(img_dir, 'idx', 'test_thermal_{}.txt'.format(trial))
+
     with open(input_data_path) as f:
         data_file_list = open(input_data_path, 'rt').read().splitlines()
         # Get full list of image and labels
-        file_image = [img_dir + '/' + s.split(' ')[0] for s in data_file_list]
+        file_image = [osp.join(img_dir, s.split(' ')[0]) for s in data_file_list]
         file_label = [int(s.split(' ')[1]) for s in data_file_list]
         
     return file_image, np.array(file_label)
@@ -336,6 +336,7 @@ def associated_analysis_for_all(all_origin, all_pred, image_paths_for_all, log_d
 
 def main():
     args = parser.parse_args()
+    base_logs_dir = args.logs_dir
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -344,8 +345,11 @@ def main():
         cudnn.deterministic = True
     log_s1_name = 'regdb_s1'
     log_s2_name = 'regdb_s2'
-    main_worker_stage1(args,log_s1_name)
-    main_worker_stage2(args,log_s1_name,log_s2_name)
+    if args.stage in ('all', 'stage1'):
+        main_worker_stage1(args,log_s1_name)
+    args.logs_dir = base_logs_dir
+    if args.stage in ('all', 'stage2'):
+        main_worker_stage2(args,log_s1_name,log_s2_name)
 
 
 def main_worker_stage1(args,log_s1_name):
@@ -583,7 +587,10 @@ def main_worker_stage1(args,log_s1_name):
 
 
 def main_worker_stage2(args,log_s1_name,log_s2_name):
-    logs_dir_root = osp.join('logs/'+log_s2_name)
+    base_logs_dir = args.logs_dir
+    if args.stage2_batch_size > 0:
+        args.batch_size = args.stage2_batch_size
+    logs_dir_root = osp.join(base_logs_dir, log_s2_name)
     trial = args.trial
     start_epoch =0
     best_mAP =0
@@ -608,7 +615,7 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
     test_loader_rgb = get_test_loader(dataset_rgb, args.height, args.width, args.batch_size, args.workers)
     # Create model
     model, model_ema = create_model(args)
-    checkpoint = load_checkpoint(osp.join('./logs/'+log_s1_name+'/'+str(trial), 'model_best.pth.tar'))
+    checkpoint = load_checkpoint(osp.join(base_logs_dir, log_s1_name, str(trial), 'model_best.pth.tar'))
 
     model.load_state_dict(checkpoint['state_dict'])
     model_ema.load_state_dict(checkpoint['state_dict'])
@@ -1015,6 +1022,10 @@ if __name__ == '__main__':
     parser.add_argument('--print-freq', type=int, default=10)
     parser.add_argument('--eval-step', type=int, default=1)
     parser.add_argument('--trial', type=int, default=1)
+    parser.add_argument('--stage', type=str, default='all',
+                        choices=['all', 'stage1', 'stage2'])
+    parser.add_argument('--stage2-batch-size', type=int, default=0,
+                        help='Use a smaller batch size for stage2; 0 keeps --batch-size.')
     parser.add_argument('--temp', type=float, default=0.05,
                         help="temperature for scaling contrastive loss")
     # path

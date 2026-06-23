@@ -4,13 +4,18 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 
 import os
+import argparse
 from shutil import copyfile
 
-# You only need to change this line to your dataset download path
-download_path = 'data/regdb'
+parser = argparse.ArgumentParser(description='Prepare RegDB into Market1501-style folders.')
+parser.add_argument('--download-path', default=os.environ.get('REGDB_ROOT', '/mnt/datasets/RegDB'),
+                    help='Path to the downloaded RegDB root containing idx/, visible/, and thermal/.')
+args = parser.parse_args()
+
+download_path = args.download_path.rstrip('/')
 
 if not os.path.isdir(download_path):
-    print('please change the download_path')
+    raise SystemExit('please change the download_path')
 
 #-----------------------------------------
 

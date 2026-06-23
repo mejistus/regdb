@@ -1,8 +1,19 @@
-for trial in 1 2 3 4 5 6 7 8 9 10
+set -euo pipefail
+
+DATA_DIR=${DATA_DIR:-/mnt/datasets/RegDB}
+LOGS_DIR=${LOGS_DIR:-logs}
+BATCH_SIZE=${BATCH_SIZE:-64}
+STAGE2_BATCH_SIZE=${STAGE2_BATCH_SIZE:-32}
+GPU=${CUDA_VISIBLE_DEVICES:-0}
+STAGE=${STAGE:-all}
+TRIALS=${TRIALS:-"1 2 3 4 5 6 7 8 9 10"}
+
+for trial in $TRIALS
 do
-CUDA_VISIBLE_DEVICES=0,1 \
-python train_regdb.py -b 128 -a agw -d regdb_rgb -mb CMhybrid --iters 100 \
---momentum 0.1 --eps 0.3 --num-instances 16 --trial $trial \
---data-dir "/data/yxb/datasets/ReIDData/RegDB/"
+CUDA_VISIBLE_DEVICES=$GPU \
+python train_regdb.py -b "$BATCH_SIZE" -a agw -d regdb_rgb -mb CMhybrid --iters 100 \
+--momentum 0.1 --eps 0.3 --num-instances 16 --trial "$trial" \
+--stage "$STAGE" --stage2-batch-size "$STAGE2_BATCH_SIZE" \
+--data-dir "$DATA_DIR" --logs-dir "$LOGS_DIR"
 done
-echo 'Don
+echo 'Done'

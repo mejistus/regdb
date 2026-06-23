@@ -36,7 +36,7 @@ from collections import Counter
 start_epoch = best_mAP = 0
 
 def get_data(name, data_dir,trial=0):
-    root = osp.join(data_dir, name)
+    root = data_dir if name in ('regdb_ir', 'regdb_rgb') else osp.join(data_dir, name)
     dataset = datasets.create(name, root,trial=trial)
     return dataset
 
@@ -230,14 +230,14 @@ def pairwise_distance(features_q, features_g):
 
 def process_test_regdb(img_dir, trial = 1, modal = 'visible'):
     if modal=='visible':
-        input_data_path = img_dir + 'idx/test_visible_{}'.format(trial) + '.txt'
+        input_data_path = osp.join(img_dir, 'idx', 'test_visible_{}.txt'.format(trial))
     elif modal=='thermal':
-        input_data_path = img_dir + 'idx/test_thermal_{}'.format(trial) + '.txt'
-    
+        input_data_path = osp.join(img_dir, 'idx', 'test_thermal_{}.txt'.format(trial))
+
     with open(input_data_path) as f:
         data_file_list = open(input_data_path, 'rt').read().splitlines()
         # Get full list of image and labels
-        file_image = [img_dir + '/' + s.split(' ')[0] for s in data_file_list]
+        file_image = [osp.join(img_dir, s.split(' ')[0]) for s in data_file_list]
         file_label = [int(s.split(' ')[1]) for s in data_file_list]
         
     return file_image, np.array(file_label)
@@ -331,7 +331,7 @@ def main_worker(args):
 
         mode='visible to thermal'
         print(mode)
-        data_path='/data/yxb/datasets/ReIDData/RegDB/'
+        data_path=args.data_dir
         query_img, query_label = process_test_regdb(data_path, trial=trial, modal='visible')
         gall_img, gall_label = process_test_regdb(data_path, trial=trial, modal='thermal')
 
@@ -392,7 +392,7 @@ def main_worker(args):
 
         mode='thermal to visible'
         print(mode)
-        data_path='/data/yxb/datasets/ReIDData/RegDB/'
+        data_path=args.data_dir
         query_img, query_label = process_test_regdb(data_path, trial=trial, modal='thermal')
         gall_img, gall_label = process_test_regdb(data_path, trial=trial, modal='visible')
 

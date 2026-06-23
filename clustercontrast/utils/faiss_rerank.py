@@ -20,6 +20,15 @@ from .faiss_utils import search_index_pytorch, search_raw_array_pytorch, \
                             index_init_gpu, index_init_cpu
 
 
+def _resolve_search_option(search_option):
+    ngpus = faiss.get_num_gpus() if hasattr(faiss, 'get_num_gpus') else 0
+    has_gpu_api = all(hasattr(faiss, name) for name in (
+        'StandardGpuResources', 'GpuIndexFlatL2', 'GpuIndexFlatConfig'))
+    if search_option in (0, 1, 2) and (ngpus < 1 or not has_gpu_api):
+        return 3, ngpus
+    return search_option, ngpus
+
+
 def k_reciprocal_neigh(initial_rank, i, k1):
     forward_k_neigh_index = initial_rank[i,:k1+1]
     backward_k_neigh_index = initial_rank[forward_k_neigh_index,:k1+1]
@@ -32,7 +41,7 @@ def compute_jaccard_distance(target_features, k1=20, k2=6, print_flag=True, sear
     if print_flag:
         print('Computing jaccard distance...')
 
-    ngpus = faiss.get_num_gpus()
+    search_option, ngpus = _resolve_search_option(search_option)
     N = target_features.size(0)
     mat_type = np.float16 if use_float16 else np.float32
 
@@ -132,7 +141,7 @@ def compute_modal_invariant_jaccard_distance(target_features, file, k1=20, k2=6,
     if print_flag:
         print('Computing jaccard distance...')
 
-    ngpus = faiss.get_num_gpus()
+    search_option, ngpus = _resolve_search_option(search_option)
     N = target_features.size(0)
     mat_type = np.float16 if use_float16 else np.float32
 
