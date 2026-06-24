@@ -31,6 +31,47 @@ FC_RE = re.compile(
 )
 ASSOC_RE = re.compile(r"associate rate\s+(?P<rate>[\d.eE+-]+)")
 ARG_RE = re.compile(r"(?P<key>\w+)=(?P<value>'[^']*'|\"[^\"]*\"|[^,\)]+)")
+TEST_AVG_RE = re.compile(
+    r"FC:\s+Rank-1:\s+(?P<rank1>[\d.]+)%.*?"
+    r"mAP:\s+(?P<map>[\d.]+)%.*?"
+    r"mINP:\s+(?P<minp>[\d.]+)%"
+)
+
+
+COMPARISON_ROWS: list[dict[str, Any]] = [
+    {"type": "SVI-ReID", "method": "DDAG", "sysu_all_rank1": 54.75, "sysu_all_map": 53.02, "sysu_indoor_rank1": 61.02, "sysu_indoor_map": 67.98, "regdb_v2t_rank1": 69.34, "regdb_v2t_map": 63.46, "regdb_t2v_rank1": 68.06, "regdb_t2v_map": 61.80, "source": "paper"},
+    {"type": "SVI-ReID", "method": "AGW", "sysu_all_rank1": 47.50, "sysu_all_map": 47.65, "sysu_indoor_rank1": 54.17, "sysu_indoor_map": 62.97, "regdb_v2t_rank1": 70.05, "regdb_v2t_map": 66.37, "regdb_t2v_rank1": 70.49, "regdb_t2v_map": 65.90, "source": "paper"},
+    {"type": "SVI-ReID", "method": "NFS", "sysu_all_rank1": 56.91, "sysu_all_map": 55.45, "sysu_indoor_rank1": 62.79, "sysu_indoor_map": 69.79, "regdb_v2t_rank1": 80.54, "regdb_v2t_map": 72.10, "regdb_t2v_rank1": 77.95, "regdb_t2v_map": 69.79, "source": "paper"},
+    {"type": "SVI-ReID", "method": "LbA", "sysu_all_rank1": 55.41, "sysu_all_map": 54.14, "sysu_indoor_rank1": 58.46, "sysu_indoor_map": 66.33, "regdb_v2t_rank1": 74.17, "regdb_v2t_map": 67.64, "regdb_t2v_rank1": 72.43, "regdb_t2v_map": 65.46, "source": "paper"},
+    {"type": "SVI-ReID", "method": "CAJ", "sysu_all_rank1": 69.88, "sysu_all_map": 66.89, "sysu_indoor_rank1": 76.26, "sysu_indoor_map": 80.37, "regdb_v2t_rank1": 85.03, "regdb_v2t_map": 79.14, "regdb_t2v_rank1": 84.75, "regdb_t2v_map": 77.82, "source": "paper"},
+    {"type": "SVI-ReID", "method": "MPANet", "sysu_all_rank1": 70.58, "sysu_all_map": 68.24, "sysu_indoor_rank1": 76.74, "sysu_indoor_map": 80.95, "regdb_v2t_rank1": 83.70, "regdb_v2t_map": 80.90, "regdb_t2v_rank1": 82.80, "regdb_t2v_map": 80.70, "source": "paper"},
+    {"type": "SVI-ReID", "method": "DART", "sysu_all_rank1": 68.72, "sysu_all_map": 66.29, "sysu_indoor_rank1": 72.52, "sysu_indoor_map": 78.17, "regdb_v2t_rank1": 83.60, "regdb_v2t_map": 75.70, "regdb_t2v_rank1": 81.97, "regdb_t2v_map": 73.78, "source": "paper"},
+    {"type": "SVI-ReID", "method": "FMCNet", "sysu_all_rank1": 66.34, "sysu_all_map": 62.51, "sysu_indoor_rank1": 68.15, "sysu_indoor_map": 74.09, "regdb_v2t_rank1": 89.12, "regdb_v2t_map": 84.43, "regdb_t2v_rank1": 88.38, "regdb_t2v_map": 83.86, "source": "paper"},
+    {"type": "SVI-ReID", "method": "MID", "sysu_all_rank1": 60.27, "sysu_all_map": 59.40, "sysu_indoor_rank1": 64.86, "sysu_indoor_map": 70.12, "regdb_v2t_rank1": 87.45, "regdb_v2t_map": 84.85, "regdb_t2v_rank1": 84.29, "regdb_t2v_map": 81.41, "source": "paper"},
+    {"type": "SVI-ReID", "method": "LUPI", "sysu_all_rank1": 71.75, "sysu_all_map": 67.12, "sysu_indoor_rank1": 78.59, "sysu_indoor_map": 81.17, "regdb_v2t_rank1": 81.61, "regdb_v2t_map": 77.01, "regdb_t2v_rank1": 82.30, "regdb_t2v_map": 76.22, "source": "paper"},
+    {"type": "SVI-ReID", "method": "DEEN", "sysu_all_rank1": 74.70, "sysu_all_map": 71.80, "sysu_indoor_rank1": 80.30, "sysu_indoor_map": 83.30, "regdb_v2t_rank1": 91.10, "regdb_v2t_map": 85.10, "regdb_t2v_rank1": 89.50, "regdb_t2v_map": 83.40, "source": "paper"},
+    {"type": "SVI-ReID", "method": "SGIEL", "sysu_all_rank1": 77.12, "sysu_all_map": 72.33, "sysu_indoor_rank1": 82.23, "sysu_indoor_map": 84.92, "regdb_v2t_rank1": 88.40, "regdb_v2t_map": 81.89, "regdb_t2v_rank1": 86.60, "regdb_t2v_map": 79.60, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "PartMix", "sysu_all_rank1": 77.78, "sysu_all_map": 74.62, "sysu_indoor_rank1": 81.52, "sysu_indoor_map": 84.38, "regdb_v2t_rank1": 85.66, "regdb_v2t_map": 82.27, "regdb_t2v_rank1": 84.93, "regdb_t2v_map": 81.07, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "CAL", "sysu_all_rank1": 74.17, "sysu_all_map": 69.94, "sysu_indoor_rank1": 79.86, "sysu_indoor_map": 83.68, "regdb_v2t_rank1": 83.46, "regdb_v2t_map": 79.36, "regdb_t2v_rank1": 83.68, "regdb_t2v_map": 78.88, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "MUN", "sysu_all_rank1": 76.24, "sysu_all_map": 73.81, "sysu_indoor_rank1": 79.42, "sysu_indoor_map": 82.64, "regdb_v2t_rank1": 86.95, "regdb_v2t_map": 83.14, "regdb_t2v_rank1": 84.59, "regdb_t2v_map": 79.42, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "SAAI", "sysu_all_rank1": 75.90, "sysu_all_map": 77.03, "sysu_indoor_rank1": 83.20, "sysu_indoor_map": 88.01, "regdb_v2t_rank1": 89.85, "regdb_v2t_map": 83.10, "regdb_t2v_rank1": 88.01, "regdb_t2v_map": 79.43, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "FDNM", "sysu_all_rank1": 77.95, "sysu_all_map": 75.59, "sysu_indoor_rank1": 83.95, "sysu_indoor_map": 87.67, "regdb_v2t_rank1": 83.91, "regdb_v2t_map": 80.76, "regdb_t2v_rank1": 85.67, "regdb_t2v_map": 80.98, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "PMWGCN", "sysu_all_rank1": 78.96, "sysu_all_map": 75.81, "sysu_indoor_rank1": 86.85, "sysu_indoor_map": 89.61, "regdb_v2t_rank1": 89.34, "regdb_v2t_map": 84.16, "regdb_t2v_rank1": 87.52, "regdb_t2v_map": 81.39, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "LCNL", "sysu_all_rank1": 79.67, "sysu_all_map": 76.17, "sysu_indoor_rank1": 84.98, "sysu_indoor_map": 88.81, "regdb_v2t_rank1": 88.01, "regdb_v2t_map": 82.66, "regdb_t2v_rank1": 84.68, "regdb_t2v_map": 79.44, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "OTLA", "sysu_all_rank1": 78.11, "sysu_all_map": 75.73, "sysu_indoor_rank1": 81.63, "sysu_indoor_map": 85.11, "regdb_v2t_rank1": 88.54, "regdb_v2t_map": 83.61, "regdb_t2v_rank1": 85.48, "regdb_t2v_map": 80.02, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "TAA", "sysu_all_rank1": 78.97, "sysu_all_map": 75.63, "sysu_indoor_rank1": 83.39, "sysu_indoor_map": 87.58, "regdb_v2t_rank1": 88.19, "regdb_v2t_map": 82.54, "regdb_t2v_rank1": 87.65, "regdb_t2v_map": 81.96, "source": "paper"},
+    {"type": "SSVI-ReID", "method": "DPIS", "sysu_all_rank1": 87.49, "sysu_all_map": 81.29, "sysu_indoor_rank1": 90.29, "sysu_indoor_map": 88.48, "regdb_v2t_rank1": 93.03, "regdb_v2t_map": 87.78, "regdb_t2v_rank1": 91.66, "regdb_t2v_map": 86.69, "source": "paper"},
+    {"type": "USVI-ReID", "method": "H2H", "sysu_all_rank1": 30.15, "sysu_all_map": 29.40, "sysu_indoor_rank1": None, "sysu_indoor_map": None, "regdb_v2t_rank1": 23.81, "regdb_v2t_map": 18.87, "regdb_t2v_rank1": None, "regdb_t2v_map": None, "source": "paper"},
+    {"type": "USVI-ReID", "method": "ADCA", "sysu_all_rank1": 45.51, "sysu_all_map": 42.73, "sysu_indoor_rank1": 50.60, "sysu_indoor_map": 59.11, "regdb_v2t_rank1": 67.20, "regdb_v2t_map": 64.05, "regdb_t2v_rank1": 68.48, "regdb_t2v_map": 63.81, "source": "paper"},
+    {"type": "USVI-ReID", "method": "NGLR", "sysu_all_rank1": 56.15, "sysu_all_map": 55.10, "sysu_indoor_rank1": 66.12, "sysu_indoor_map": 72.56, "regdb_v2t_rank1": 85.65, "regdb_v2t_map": 78.88, "regdb_t2v_rank1": 82.17, "regdb_t2v_map": 76.01, "source": "paper"},
+    {"type": "USVI-ReID", "method": "MBCCM", "sysu_all_rank1": 53.14, "sysu_all_map": 52.13, "sysu_indoor_rank1": 55.91, "sysu_indoor_map": 66.33, "regdb_v2t_rank1": 83.79, "regdb_v2t_map": 78.27, "regdb_t2v_rank1": 82.33, "regdb_t2v_map": 77.87, "source": "paper"},
+    {"type": "USVI-ReID", "method": "CCLNet", "sysu_all_rank1": 54.03, "sysu_all_map": 50.19, "sysu_indoor_rank1": 56.68, "sysu_indoor_map": 65.53, "regdb_v2t_rank1": 69.94, "regdb_v2t_map": 65.53, "regdb_t2v_rank1": 70.17, "regdb_t2v_map": 65.13, "source": "paper"},
+    {"type": "USVI-ReID", "method": "PGM", "sysu_all_rank1": 57.27, "sysu_all_map": 51.78, "sysu_indoor_rank1": 56.23, "sysu_indoor_map": 62.74, "regdb_v2t_rank1": 69.53, "regdb_v2t_map": 65.41, "regdb_t2v_rank1": 69.95, "regdb_t2v_map": 65.17, "source": "paper"},
+    {"type": "USVI-ReID", "method": "GUR*", "sysu_all_rank1": 64.05, "sysu_all_map": 61.30, "sysu_indoor_rank1": 68.79, "sysu_indoor_map": 76.94, "regdb_v2t_rank1": 73.91, "regdb_v2t_map": 70.23, "regdb_t2v_rank1": 75.00, "regdb_t2v_map": 69.90, "source": "paper"},
+    {"type": "USVI-ReID", "method": "MMM", "sysu_all_rank1": 68.91, "sysu_all_map": 65.46, "sysu_indoor_rank1": 75.37, "sysu_indoor_map": 79.85, "regdb_v2t_rank1": 84.50, "regdb_v2t_map": 80.82, "regdb_t2v_rank1": 84.72, "regdb_t2v_map": 79.94, "source": "paper"},
+    {"type": "USVI-ReID", "method": "PCLHD", "sysu_all_rank1": 72.40, "sysu_all_map": 67.52, "sysu_indoor_rank1": 77.39, "sysu_indoor_map": 81.64, "regdb_v2t_rank1": 85.78, "regdb_v2t_map": 82.42, "regdb_t2v_rank1": 84.56, "regdb_t2v_map": 80.12, "source": "paper"},
+    {"type": "USVI-ReID", "method": "PCLHD+MMM", "sysu_all_rank1": 75.52, "sysu_all_map": 69.18, "sysu_indoor_rank1": 79.29, "sysu_indoor_map": 81.96, "regdb_v2t_rank1": 87.73, "regdb_v2t_map": 82.31, "regdb_t2v_rank1": 86.18, "regdb_t2v_map": 80.60, "source": "paper"},
+]
 
 
 def parse_value(raw: str) -> Any:
@@ -195,6 +236,57 @@ def row_metric(row: dict[str, Any], primary: str, fallback: str) -> float | None
     return None
 
 
+def parse_regdb_bidir_test(path: Path) -> dict[str, dict[str, float]]:
+    results: dict[str, dict[str, float]] = {}
+    if not path.exists():
+        return results
+
+    pending_average = False
+    directions = ["regdb_v2t", "regdb_t2v"]
+    direction_index = 0
+    for line in path.read_text(errors="replace").splitlines():
+        if line.startswith("All Average:"):
+            pending_average = True
+            continue
+        if not pending_average:
+            continue
+        match = TEST_AVG_RE.search(line)
+        if not match:
+            continue
+        if direction_index < len(directions):
+            results[directions[direction_index]] = {
+                "rank1": float(match.group("rank1")),
+                "map": float(match.group("map")),
+                "minp": float(match.group("minp")),
+            }
+        direction_index += 1
+        pending_average = False
+    return results
+
+
+def build_comparison_rows(log_root: Path) -> list[dict[str, Any]]:
+    rows = [dict(row) for row in COMPARISON_ROWS]
+    bidir = parse_regdb_bidir_test(log_root / "regdb_s2_test_bidir.log")
+    v2t = bidir.get("regdb_v2t", {})
+    t2v = bidir.get("regdb_t2v", {})
+    rows.append(
+        {
+            "type": "USVI-ReID",
+            "method": "PCLHD reproduced, stage2 avg",
+            "sysu_all_rank1": None,
+            "sysu_all_map": None,
+            "sysu_indoor_rank1": None,
+            "sysu_indoor_map": None,
+            "regdb_v2t_rank1": v2t.get("rank1"),
+            "regdb_v2t_map": v2t.get("map"),
+            "regdb_t2v_rank1": t2v.get("rank1"),
+            "regdb_t2v_map": t2v.get("map"),
+            "source": "reproduced",
+        }
+    )
+    return rows
+
+
 def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
     summary_rows: list[dict[str, Any]] = []
     epoch_rows: list[dict[str, Any]] = []
@@ -244,11 +336,13 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "RegDB trials 1-10, visible-to-thermal evaluation logs generated by train_regdb.py.",
+            "split_policy": "RegDB trials 1-10. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "comparison_source": "Literature rows are transcribed from arXiv:2402.19026v3 Table 1. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
         },
         "summary_rows": summary_rows,
         "epoch_rows": epoch_rows,
+        "comparison_rows": build_comparison_rows(log_root),
         "validation": validation,
     }
 
@@ -385,6 +479,44 @@ def build_html(payload: dict[str, Any]) -> str:
       margin: 0;
       color: var(--muted);
     }}
+    .flow-steps {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+      padding: 0;
+      list-style: none;
+    }}
+    .flow-steps li {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 10px;
+    }}
+    .flow-steps strong {{
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
+    }}
+    .flow-steps span {{
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .caption-title {{
+      margin: 4px 0 0;
+      color: var(--ink);
+      font-weight: 720;
+      text-align: center;
+    }}
+    .caption-en {{
+      margin: 2px 0 12px;
+      text-align: center;
+      font-size: 13px;
+    }}
+    .source-note {{
+      margin: 10px 0 0;
+      font-size: 12px;
+    }}
     code {{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 12px;
@@ -399,6 +531,7 @@ def build_html(payload: dict[str, Any]) -> str:
       header, main {{ padding-left: 14px; padding-right: 14px; }}
       .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .explain-grid {{ grid-template-columns: 1fr; }}
+      .flow-steps {{ grid-template-columns: 1fr; }}
       .term-list {{ grid-template-columns: 1fr; }}
       input, select {{ min-width: 100%; }}
       label {{ flex: 1 1 180px; }}
@@ -436,6 +569,68 @@ def build_html(payload: dict[str, Any]) -> str:
           <p>最终报告以完成的 stage2 结果为主；当前报告如果显示 incomplete，表示还有 trial 尚未全部完成。</p>
         </div>
       </div>
+    </section>
+    <section class="panel">
+      <h2>算法流程</h2>
+      <p>本项目把无监督跨模态 ReID 拆成“单模态伪标签初始化”和“跨模态关联优化”两段。训练过程中每个 epoch 会重新抽取特征、聚类、构造 memory，并用伪标签和跨模态匹配关系更新网络。</p>
+      <ol class="flow-steps">
+        <li><strong>1. 数据准备</strong><span>读取 RegDB/SYSU 的 RGB 与 IR 图像，按官方划分生成训练集、查询集和图库。</span></li>
+        <li><strong>2. 特征初始化</strong><span>使用 ImageNet 预训练 backbone 提取两种模态的初始特征，并用 GeM/BNNeck 形成检索向量。</span></li>
+        <li><strong>3. Stage1 聚类训练</strong><span>分别对 RGB 与 IR 特征做 DBSCAN 聚类，把聚类 ID 当作伪标签，用 DCL 和 ClusterMemory 训练初始模型。</span></li>
+        <li><strong>4. Stage2 跨模态关联</strong><span>加载 stage1 checkpoint，构造 RGB、IR、All 三组 memory，通过跨模态相似度和二分图匹配建立 RGB-IR 原型对应关系。</span></li>
+        <li><strong>5. 评估与汇总</strong><span>用最终 stage2 checkpoint 做 visible-to-thermal 与 thermal-to-visible 检索，汇总 Rank-1、mAP、mINP 和逐 trial 均值。</span></li>
+      </ol>
+    </section>
+    <section class="panel">
+      <h2>对比实验表格</h2>
+      <div class="controls">
+        <label>Types<select id="compareTypeFilter" multiple></select></label>
+        <label>Search<input id="compareSearchInput" type="search" placeholder="method, type, source"></label>
+        <button id="clearCompareFilters" type="button">Clear</button>
+      </div>
+      <p class="caption-title">表 5.2 不同方法在 SYSU-MM01 数据集上的定量对比</p>
+      <p class="caption-en">Table 5.2 Quantitative experimental results of different methods on SYSU-MM01 dataset</p>
+      <div class="table-wrap">
+        <table id="sysuCompareTable">
+          <thead>
+            <tr>
+              <th data-key="type" rowspan="2">类型</th>
+              <th data-key="method" rowspan="2">方法</th>
+              <th colspan="2">全搜索</th>
+              <th colspan="2">室内搜索</th>
+            </tr>
+            <tr>
+              <th data-key="sysu_all_rank1">Rank-1 (%)</th>
+              <th data-key="sysu_all_map">mAP (%)</th>
+              <th data-key="sysu_indoor_rank1">Rank-1 (%)</th>
+              <th data-key="sysu_indoor_map">mAP (%)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="caption-title">表 5.3 不同方法在 RegDB 数据集上的定量对比</p>
+      <p class="caption-en">Table 5.3 Quantitative experimental results of different methods on RegDB dataset</p>
+      <div class="table-wrap">
+        <table id="regdbCompareTable">
+          <thead>
+            <tr>
+              <th data-key="type" rowspan="2">类型</th>
+              <th data-key="method" rowspan="2">方法</th>
+              <th colspan="2">可见光-红外</th>
+              <th colspan="2">红外-可见光</th>
+            </tr>
+            <tr>
+              <th data-key="regdb_v2t_rank1">Rank-1 (%)</th>
+              <th data-key="regdb_v2t_map">mAP (%)</th>
+              <th data-key="regdb_t2v_rank1">Rank-1 (%)</th>
+              <th data-key="regdb_t2v_map">mAP (%)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="source-note muted">文献行来自 arXiv:2402.19026v3 Table 1；“PCLHD reproduced, stage2 avg”来自本次复现的 <code>logs/regdb_s2_test_bidir.log</code>。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
     </section>
     <section class="panel">
       <h2>术语解释</h2>
@@ -528,12 +723,16 @@ def build_html(payload: dict[str, Any]) -> str:
     const DATA = JSON.parse(document.getElementById('report-data').textContent);
     const state = {{
       summarySort: {{ key: 'trial', dir: 'asc' }},
-      epochSort: {{ key: 'trial', dir: 'asc' }}
+      epochSort: {{ key: 'trial', dir: 'asc' }},
+      sysuCompareSort: {{ key: 'type', dir: 'asc' }},
+      regdbCompareSort: {{ key: 'type', dir: 'asc' }}
     }};
 
     const summaryColumns = ['trial', 'stage', 'status', 'epoch_count', 'best_epoch', 'best_rank1', 'best_map_epoch', 'best_map', 'best_minp', 'checkpoint_epoch', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_map', 'final_associate_rate', 'runtime', 'batch_size', 'checkpoint_exists', 'log_path'];
     const epochColumns = ['trial', 'stage', 'epoch', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'best_r1', 'best_map', 'associate_rate', 'log_path'];
-    const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1']);
+    const sysuCompareColumns = ['type', 'method', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map'];
+    const regdbCompareColumns = ['type', 'method', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map'];
+    const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map']);
 
     function uniqueValues(rows, key) {{
       return Array.from(new Set(rows.map(row => row[key]).filter(value => value !== null && value !== undefined))).sort((a, b) => String(a).localeCompare(String(b), undefined, {{ numeric: true }}));
@@ -592,12 +791,30 @@ def build_html(payload: dict[str, Any]) -> str:
       return `<td>${{escapeHtml(value ?? '')}}</td>`;
     }}
 
+    function compareCell(row, key) {{
+      const value = row[key];
+      if (metricKeys.has(key)) {{
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return '<td class="num muted">-</td>';
+        return `<td class="num" style="${{metricColor(value)}}">${{fmtNumber(value)}}</td>`;
+      }}
+      return `<td>${{escapeHtml(value ?? '')}}</td>`;
+    }}
+
     function rowMatches(row) {{
       const trialValues = selectedValues('trialFilter');
       const stageValues = selectedValues('stageFilter');
       if (trialValues.length && !trialValues.includes(String(row.trial))) return false;
       if (stageValues.length && !stageValues.includes(String(row.stage))) return false;
       const needle = document.getElementById('searchInput').value.trim().toLowerCase();
+      if (!needle) return true;
+      const haystack = Object.values(row).join(' ').toLowerCase();
+      return haystack.includes(needle);
+    }}
+
+    function comparisonMatches(row) {{
+      const typeValues = selectedValues('compareTypeFilter');
+      if (typeValues.length && !typeValues.includes(String(row.type))) return false;
+      const needle = document.getElementById('compareSearchInput').value.trim().toLowerCase();
       if (!needle) return true;
       const haystack = Object.values(row).join(' ').toLowerCase();
       return haystack.includes(needle);
@@ -644,6 +861,18 @@ def build_html(payload: dict[str, Any]) -> str:
       updateHeaderState('epochTable', state.epochSort);
     }}
 
+    function renderComparisonTable(tableId, columns, sortState) {{
+      const tbody = document.querySelector(`#${{tableId}} tbody`);
+      const rows = sortRows(DATA.comparison_rows.filter(comparisonMatches), sortState);
+      tbody.innerHTML = rows.map(row => `<tr>${{columns.map(key => compareCell(row, key)).join('')}}</tr>`).join('');
+      updateHeaderState(tableId, sortState);
+    }}
+
+    function renderComparisonTables() {{
+      renderComparisonTable('sysuCompareTable', sysuCompareColumns, state.sysuCompareSort);
+      renderComparisonTable('regdbCompareTable', regdbCompareColumns, state.regdbCompareSort);
+    }}
+
     function renderCards() {{
       const validation = DATA.validation;
       const completeRuns = validation.complete_run_count;
@@ -678,13 +907,19 @@ def build_html(payload: dict[str, Any]) -> str:
 
     function renderAll() {{
       renderCards();
+      renderComparisonTables();
       renderSummaryTable();
       renderEpochTable();
       renderValidation();
     }}
 
     function setSort(target, key) {{
-      const sortState = target === 'summary' ? state.summarySort : state.epochSort;
+      const sortState = {{
+        summary: state.summarySort,
+        epoch: state.epochSort,
+        sysuCompare: state.sysuCompareSort,
+        regdbCompare: state.regdbCompareSort
+      }}[target];
       if (sortState.key === key) {{
         sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
       }} else {{
@@ -697,17 +932,27 @@ def build_html(payload: dict[str, Any]) -> str:
     function init() {{
       document.getElementById('trialFilter').innerHTML = optionHtml(uniqueValues(DATA.summary_rows, 'trial'));
       document.getElementById('stageFilter').innerHTML = optionHtml(uniqueValues(DATA.summary_rows, 'stage'));
+      document.getElementById('compareTypeFilter').innerHTML = optionHtml(uniqueValues(DATA.comparison_rows, 'type'));
       document.getElementById('trialFilter').addEventListener('change', renderAll);
       document.getElementById('stageFilter').addEventListener('change', renderAll);
       document.getElementById('searchInput').addEventListener('input', renderAll);
+      document.getElementById('compareTypeFilter').addEventListener('change', renderAll);
+      document.getElementById('compareSearchInput').addEventListener('input', renderAll);
       document.getElementById('clearFilters').addEventListener('click', () => {{
         document.getElementById('trialFilter').selectedIndex = -1;
         document.getElementById('stageFilter').selectedIndex = -1;
         document.getElementById('searchInput').value = '';
         renderAll();
       }});
+      document.getElementById('clearCompareFilters').addEventListener('click', () => {{
+        document.getElementById('compareTypeFilter').selectedIndex = -1;
+        document.getElementById('compareSearchInput').value = '';
+        renderAll();
+      }});
       document.querySelectorAll('#summaryTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('summary', th.dataset.key)));
       document.querySelectorAll('#epochTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('epoch', th.dataset.key)));
+      document.querySelectorAll('#sysuCompareTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('sysuCompare', th.dataset.key)));
+      document.querySelectorAll('#regdbCompareTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('regdbCompare', th.dataset.key)));
       renderAll();
     }}
 

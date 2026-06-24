@@ -22,7 +22,7 @@ from clustercontrast import models
 from clustercontrast.models.cm import ClusterMemory
 from clustercontrast.utils.data import IterLoader
 from clustercontrast.utils.data import transforms as T
-from clustercontrast.utils.data.preprocessor import Preprocessor,Preprocessor_aug
+from clustercontrast.utils.data.preprocessor import Preprocessor, Preprocessor_color as Preprocessor_aug
 from clustercontrast.utils.logging import Logger
 from clustercontrast.utils.serialization import load_checkpoint, save_checkpoint
 from clustercontrast.utils.faiss_rerank import compute_jaccard_distance
@@ -310,7 +310,7 @@ def main_worker(args):
     log_name='regdb_s2'#model path
     model = create_model(args)
     for trial in range(1,11):#(1,11):
-        args.test_batch=64
+        args.test_batch = getattr(args, 'test_batch', 16)
         args.img_w=args.width
         args.img_h=args.height
         normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
@@ -371,7 +371,7 @@ def main_worker(args):
             cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
 #################################
     for trial in range(1,11):#(1,11):
-        args.test_batch=64
+        args.test_batch = getattr(args, 'test_batch', 16)
         args.img_w=args.width
         args.img_h=args.height
         normalize = T.Normalize(mean=[0.485, 0.456, 0.406],
@@ -439,6 +439,8 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dataset', type=str, default='dukemtmcreid',
                         choices=datasets.names())
     parser.add_argument('-b', '--batch-size', type=int, default=2)
+    parser.add_argument('--test-batch', type=int, default=16,
+                        help="batch size for RegDB test feature extraction")
     parser.add_argument('-j', '--workers', type=int, default=8)
     parser.add_argument('--height', type=int, default=288, help="input height")
     parser.add_argument('--width', type=int, default=144, help="input width")

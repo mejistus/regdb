@@ -4,6 +4,7 @@ from torch.nn import functional as F
 from torch.nn import init
 import torchvision
 import torch
+from pathlib import Path
 from .pooling import build_pooling_layer
 
 
@@ -29,9 +30,21 @@ class ResNet(nn.Module):
         # Construct base (pretrained) resnet
         if depth not in ResNet.__factory:
             raise KeyError("Unsupported depth:", depth)
-        # resnet = ResNet.__factory[depth](pretrained=pretrained)
         resnet = ResNet.__factory[depth](pretrained=False)
-        resnet.load_state_dict(  torch.load('/dat01/yangbin/cluster-contrast-reid-main/examples/pretrained/resnet50-19c8e357.pth'))
+        if pretrained:
+            if depth != 50:
+                resnet = ResNet.__factory[depth](pretrained=True)
+            else:
+                weight_path = (
+                    Path(__file__).resolve().parents[2]
+                    / "examples"
+                    / "pretrained"
+                    / "resnet50-19c8e357.pth"
+                )
+                if weight_path.exists():
+                    resnet.load_state_dict(torch.load(str(weight_path), weights_only=False))
+                else:
+                    resnet = ResNet.__factory[depth](pretrained=True)
 
         resnet.layer4[0].conv2.stride = (1, 1)
         resnet.layer4[0].downsample[0].stride = (1, 1)
