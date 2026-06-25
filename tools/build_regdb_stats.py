@@ -38,39 +38,70 @@ TEST_AVG_RE = re.compile(
 )
 
 
+def comparison_row(
+    row_type: str,
+    method: str,
+    venue: str,
+    sysu_all: tuple[float | None, float | None],
+    sysu_indoor: tuple[float | None, float | None],
+    regdb_v2t: tuple[float | None, float | None],
+    regdb_t2v: tuple[float | None, float | None],
+    *,
+    source: str = "paper",
+    is_ours: bool = False,
+) -> dict[str, Any]:
+    return {
+        "type": row_type,
+        "method": method,
+        "venue": venue,
+        "sysu_all_rank1": sysu_all[0],
+        "sysu_all_map": sysu_all[1],
+        "sysu_indoor_rank1": sysu_indoor[0],
+        "sysu_indoor_map": sysu_indoor[1],
+        "regdb_v2t_rank1": regdb_v2t[0],
+        "regdb_v2t_map": regdb_v2t[1],
+        "regdb_t2v_rank1": regdb_t2v[0],
+        "regdb_t2v_map": regdb_t2v[1],
+        "source": source,
+        "is_ours": is_ours,
+    }
+
+
 COMPARISON_ROWS: list[dict[str, Any]] = [
-    {"type": "SVI-ReID", "method": "DDAG", "sysu_all_rank1": 54.75, "sysu_all_map": 53.02, "sysu_indoor_rank1": 61.02, "sysu_indoor_map": 67.98, "regdb_v2t_rank1": 69.34, "regdb_v2t_map": 63.46, "regdb_t2v_rank1": 68.06, "regdb_t2v_map": 61.80, "source": "paper"},
-    {"type": "SVI-ReID", "method": "AGW", "sysu_all_rank1": 47.50, "sysu_all_map": 47.65, "sysu_indoor_rank1": 54.17, "sysu_indoor_map": 62.97, "regdb_v2t_rank1": 70.05, "regdb_v2t_map": 66.37, "regdb_t2v_rank1": 70.49, "regdb_t2v_map": 65.90, "source": "paper"},
-    {"type": "SVI-ReID", "method": "NFS", "sysu_all_rank1": 56.91, "sysu_all_map": 55.45, "sysu_indoor_rank1": 62.79, "sysu_indoor_map": 69.79, "regdb_v2t_rank1": 80.54, "regdb_v2t_map": 72.10, "regdb_t2v_rank1": 77.95, "regdb_t2v_map": 69.79, "source": "paper"},
-    {"type": "SVI-ReID", "method": "LbA", "sysu_all_rank1": 55.41, "sysu_all_map": 54.14, "sysu_indoor_rank1": 58.46, "sysu_indoor_map": 66.33, "regdb_v2t_rank1": 74.17, "regdb_v2t_map": 67.64, "regdb_t2v_rank1": 72.43, "regdb_t2v_map": 65.46, "source": "paper"},
-    {"type": "SVI-ReID", "method": "CAJ", "sysu_all_rank1": 69.88, "sysu_all_map": 66.89, "sysu_indoor_rank1": 76.26, "sysu_indoor_map": 80.37, "regdb_v2t_rank1": 85.03, "regdb_v2t_map": 79.14, "regdb_t2v_rank1": 84.75, "regdb_t2v_map": 77.82, "source": "paper"},
-    {"type": "SVI-ReID", "method": "MPANet", "sysu_all_rank1": 70.58, "sysu_all_map": 68.24, "sysu_indoor_rank1": 76.74, "sysu_indoor_map": 80.95, "regdb_v2t_rank1": 83.70, "regdb_v2t_map": 80.90, "regdb_t2v_rank1": 82.80, "regdb_t2v_map": 80.70, "source": "paper"},
-    {"type": "SVI-ReID", "method": "DART", "sysu_all_rank1": 68.72, "sysu_all_map": 66.29, "sysu_indoor_rank1": 72.52, "sysu_indoor_map": 78.17, "regdb_v2t_rank1": 83.60, "regdb_v2t_map": 75.70, "regdb_t2v_rank1": 81.97, "regdb_t2v_map": 73.78, "source": "paper"},
-    {"type": "SVI-ReID", "method": "FMCNet", "sysu_all_rank1": 66.34, "sysu_all_map": 62.51, "sysu_indoor_rank1": 68.15, "sysu_indoor_map": 74.09, "regdb_v2t_rank1": 89.12, "regdb_v2t_map": 84.43, "regdb_t2v_rank1": 88.38, "regdb_t2v_map": 83.86, "source": "paper"},
-    {"type": "SVI-ReID", "method": "MID", "sysu_all_rank1": 60.27, "sysu_all_map": 59.40, "sysu_indoor_rank1": 64.86, "sysu_indoor_map": 70.12, "regdb_v2t_rank1": 87.45, "regdb_v2t_map": 84.85, "regdb_t2v_rank1": 84.29, "regdb_t2v_map": 81.41, "source": "paper"},
-    {"type": "SVI-ReID", "method": "LUPI", "sysu_all_rank1": 71.75, "sysu_all_map": 67.12, "sysu_indoor_rank1": 78.59, "sysu_indoor_map": 81.17, "regdb_v2t_rank1": 81.61, "regdb_v2t_map": 77.01, "regdb_t2v_rank1": 82.30, "regdb_t2v_map": 76.22, "source": "paper"},
-    {"type": "SVI-ReID", "method": "DEEN", "sysu_all_rank1": 74.70, "sysu_all_map": 71.80, "sysu_indoor_rank1": 80.30, "sysu_indoor_map": 83.30, "regdb_v2t_rank1": 91.10, "regdb_v2t_map": 85.10, "regdb_t2v_rank1": 89.50, "regdb_t2v_map": 83.40, "source": "paper"},
-    {"type": "SVI-ReID", "method": "SGIEL", "sysu_all_rank1": 77.12, "sysu_all_map": 72.33, "sysu_indoor_rank1": 82.23, "sysu_indoor_map": 84.92, "regdb_v2t_rank1": 88.40, "regdb_v2t_map": 81.89, "regdb_t2v_rank1": 86.60, "regdb_t2v_map": 79.60, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "PartMix", "sysu_all_rank1": 77.78, "sysu_all_map": 74.62, "sysu_indoor_rank1": 81.52, "sysu_indoor_map": 84.38, "regdb_v2t_rank1": 85.66, "regdb_v2t_map": 82.27, "regdb_t2v_rank1": 84.93, "regdb_t2v_map": 81.07, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "CAL", "sysu_all_rank1": 74.17, "sysu_all_map": 69.94, "sysu_indoor_rank1": 79.86, "sysu_indoor_map": 83.68, "regdb_v2t_rank1": 83.46, "regdb_v2t_map": 79.36, "regdb_t2v_rank1": 83.68, "regdb_t2v_map": 78.88, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "MUN", "sysu_all_rank1": 76.24, "sysu_all_map": 73.81, "sysu_indoor_rank1": 79.42, "sysu_indoor_map": 82.64, "regdb_v2t_rank1": 86.95, "regdb_v2t_map": 83.14, "regdb_t2v_rank1": 84.59, "regdb_t2v_map": 79.42, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "SAAI", "sysu_all_rank1": 75.90, "sysu_all_map": 77.03, "sysu_indoor_rank1": 83.20, "sysu_indoor_map": 88.01, "regdb_v2t_rank1": 89.85, "regdb_v2t_map": 83.10, "regdb_t2v_rank1": 88.01, "regdb_t2v_map": 79.43, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "FDNM", "sysu_all_rank1": 77.95, "sysu_all_map": 75.59, "sysu_indoor_rank1": 83.95, "sysu_indoor_map": 87.67, "regdb_v2t_rank1": 83.91, "regdb_v2t_map": 80.76, "regdb_t2v_rank1": 85.67, "regdb_t2v_map": 80.98, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "PMWGCN", "sysu_all_rank1": 78.96, "sysu_all_map": 75.81, "sysu_indoor_rank1": 86.85, "sysu_indoor_map": 89.61, "regdb_v2t_rank1": 89.34, "regdb_v2t_map": 84.16, "regdb_t2v_rank1": 87.52, "regdb_t2v_map": 81.39, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "LCNL", "sysu_all_rank1": 79.67, "sysu_all_map": 76.17, "sysu_indoor_rank1": 84.98, "sysu_indoor_map": 88.81, "regdb_v2t_rank1": 88.01, "regdb_v2t_map": 82.66, "regdb_t2v_rank1": 84.68, "regdb_t2v_map": 79.44, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "OTLA", "sysu_all_rank1": 78.11, "sysu_all_map": 75.73, "sysu_indoor_rank1": 81.63, "sysu_indoor_map": 85.11, "regdb_v2t_rank1": 88.54, "regdb_v2t_map": 83.61, "regdb_t2v_rank1": 85.48, "regdb_t2v_map": 80.02, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "TAA", "sysu_all_rank1": 78.97, "sysu_all_map": 75.63, "sysu_indoor_rank1": 83.39, "sysu_indoor_map": 87.58, "regdb_v2t_rank1": 88.19, "regdb_v2t_map": 82.54, "regdb_t2v_rank1": 87.65, "regdb_t2v_map": 81.96, "source": "paper"},
-    {"type": "SSVI-ReID", "method": "DPIS", "sysu_all_rank1": 87.49, "sysu_all_map": 81.29, "sysu_indoor_rank1": 90.29, "sysu_indoor_map": 88.48, "regdb_v2t_rank1": 93.03, "regdb_v2t_map": 87.78, "regdb_t2v_rank1": 91.66, "regdb_t2v_map": 86.69, "source": "paper"},
-    {"type": "USVI-ReID", "method": "H2H", "sysu_all_rank1": 30.15, "sysu_all_map": 29.40, "sysu_indoor_rank1": None, "sysu_indoor_map": None, "regdb_v2t_rank1": 23.81, "regdb_v2t_map": 18.87, "regdb_t2v_rank1": None, "regdb_t2v_map": None, "source": "paper"},
-    {"type": "USVI-ReID", "method": "ADCA", "sysu_all_rank1": 45.51, "sysu_all_map": 42.73, "sysu_indoor_rank1": 50.60, "sysu_indoor_map": 59.11, "regdb_v2t_rank1": 67.20, "regdb_v2t_map": 64.05, "regdb_t2v_rank1": 68.48, "regdb_t2v_map": 63.81, "source": "paper"},
-    {"type": "USVI-ReID", "method": "NGLR", "sysu_all_rank1": 56.15, "sysu_all_map": 55.10, "sysu_indoor_rank1": 66.12, "sysu_indoor_map": 72.56, "regdb_v2t_rank1": 85.65, "regdb_v2t_map": 78.88, "regdb_t2v_rank1": 82.17, "regdb_t2v_map": 76.01, "source": "paper"},
-    {"type": "USVI-ReID", "method": "MBCCM", "sysu_all_rank1": 53.14, "sysu_all_map": 52.13, "sysu_indoor_rank1": 55.91, "sysu_indoor_map": 66.33, "regdb_v2t_rank1": 83.79, "regdb_v2t_map": 78.27, "regdb_t2v_rank1": 82.33, "regdb_t2v_map": 77.87, "source": "paper"},
-    {"type": "USVI-ReID", "method": "CCLNet", "sysu_all_rank1": 54.03, "sysu_all_map": 50.19, "sysu_indoor_rank1": 56.68, "sysu_indoor_map": 65.53, "regdb_v2t_rank1": 69.94, "regdb_v2t_map": 65.53, "regdb_t2v_rank1": 70.17, "regdb_t2v_map": 65.13, "source": "paper"},
-    {"type": "USVI-ReID", "method": "PGM", "sysu_all_rank1": 57.27, "sysu_all_map": 51.78, "sysu_indoor_rank1": 56.23, "sysu_indoor_map": 62.74, "regdb_v2t_rank1": 69.53, "regdb_v2t_map": 65.41, "regdb_t2v_rank1": 69.95, "regdb_t2v_map": 65.17, "source": "paper"},
-    {"type": "USVI-ReID", "method": "GUR*", "sysu_all_rank1": 64.05, "sysu_all_map": 61.30, "sysu_indoor_rank1": 68.79, "sysu_indoor_map": 76.94, "regdb_v2t_rank1": 73.91, "regdb_v2t_map": 70.23, "regdb_t2v_rank1": 75.00, "regdb_t2v_map": 69.90, "source": "paper"},
-    {"type": "USVI-ReID", "method": "MMM", "sysu_all_rank1": 68.91, "sysu_all_map": 65.46, "sysu_indoor_rank1": 75.37, "sysu_indoor_map": 79.85, "regdb_v2t_rank1": 84.50, "regdb_v2t_map": 80.82, "regdb_t2v_rank1": 84.72, "regdb_t2v_map": 79.94, "source": "paper"},
-    {"type": "USVI-ReID", "method": "PCLHD", "sysu_all_rank1": 72.40, "sysu_all_map": 67.52, "sysu_indoor_rank1": 77.39, "sysu_indoor_map": 81.64, "regdb_v2t_rank1": 85.78, "regdb_v2t_map": 82.42, "regdb_t2v_rank1": 84.56, "regdb_t2v_map": 80.12, "source": "paper"},
-    {"type": "USVI-ReID", "method": "PCLHD+MMM", "sysu_all_rank1": 75.52, "sysu_all_map": 69.18, "sysu_indoor_rank1": 79.29, "sysu_indoor_map": 81.96, "regdb_v2t_rank1": 87.73, "regdb_v2t_map": 82.31, "regdb_t2v_rank1": 86.18, "regdb_t2v_map": 80.60, "source": "paper"},
+    comparison_row("SVI-ReID", "DDAG", "ECCV 2020", (54.8, 53.0), (61.0, 68.0), (69.3, 63.5), (68.1, 61.8)),
+    comparison_row("SVI-ReID", "AGW", "TPAMI 2021", (47.5, 47.7), (54.2, 63.0), (70.1, 66.4), (70.5, 65.9)),
+    comparison_row("SVI-ReID", "NFS", "CVPR 2021", (56.9, 55.5), (62.8, 69.8), (80.5, 72.1), (78.0, 69.8)),
+    comparison_row("SVI-ReID", "LbA", "ICCV 2021", (55.4, 54.1), (58.5, 66.3), (74.2, 67.6), (72.4, 65.5)),
+    comparison_row("SVI-ReID", "CAJ", "ICCV 2021", (69.9, 66.9), (76.3, 80.4), (85.0, 79.1), (84.8, 77.8)),
+    comparison_row("SVI-ReID", "MPANet", "CVPR 2021", (70.6, 68.2), (76.7, 81.0), (83.7, 80.9), (82.8, 80.7)),
+    comparison_row("SVI-ReID", "DART", "CVPR 2022", (68.7, 66.3), (72.5, 78.2), (83.6, 75.7), (82.0, 73.8)),
+    comparison_row("SVI-ReID", "FMCNet", "CVPR 2022", (66.3, 62.5), (68.2, 74.1), (89.1, 84.4), (88.4, 83.9)),
+    comparison_row("SVI-ReID", "MAUM", "CVPR 2022", (71.7, 68.8), (77.0, 81.9), (87.9, 85.1), (87.0, 84.3)),
+    comparison_row("SVI-ReID", "MID", "AAAI 2022", (60.3, 59.4), (64.9, 70.1), (87.5, 84.9), (84.3, 81.4)),
+    comparison_row("SVI-ReID", "LUPI", "ECCV 2022", (71.1, 67.6), (82.4, 82.7), (88.0, 82.7), (86.8, 81.3)),
+    comparison_row("SVI-ReID", "DEEN", "CVPR 2023", (74.7, 71.8), (80.3, 83.3), (91.1, 85.1), (89.5, 83.4)),
+    comparison_row("SVI-ReID", "SGIEL", "CVPR 2023", (77.1, 72.3), (82.1, 83.0), (92.2, 86.6), (91.1, 85.2)),
+    comparison_row("SVI-ReID", "PartMix", "CVPR 2023", (77.8, 74.6), (81.5, 84.4), (85.7, 82.3), (84.9, 82.5)),
+    comparison_row("SVI-ReID", "CAL", "ICCV 2023", (74.7, 71.7), (79.7, 83.7), (94.5, 88.7), (93.6, 87.6)),
+    comparison_row("SVI-ReID", "MUN", "ICCV 2023", (76.2, 73.8), (79.4, 82.1), (95.2, 87.2), (91.9, 85.0)),
+    comparison_row("SVI-ReID", "SAAI", "ICCV 2023", (75.9, 77.0), (83.2, 88.0), (91.1, 91.5), (92.1, 92.0)),
+    comparison_row("SVI-ReID", "FDNM", "arXiv 2024", (77.8, 75.1), (87.3, 89.1), (95.5, 90.0), (94.0, 88.7)),
+    comparison_row("SVI-ReID", "PMWGCN", "TIFS 2024", (90.6, 84.5), (88.8, 81.6), (66.8, 64.9), (72.6, 76.2)),
+    comparison_row("SVI-ReID", "LCNL", "IJCV 2024", (70.2, 68.0), (76.2, 80.3), (85.6, 78.7), (84.0, 76.9)),
+    comparison_row("SSVI-ReID", "OTLA", "ECCV 2022", (48.2, 43.9), (47.4, 56.8), (49.9, 41.8), (49.6, 42.8)),
+    comparison_row("SSVI-ReID", "TAA", "TIP 2023", (48.8, 42.3), (50.1, 56.0), (62.2, 56.0), (63.8, 56.5)),
+    comparison_row("SSVI-ReID", "DPIS", "ICCV 2023", (58.4, 55.6), (63.0, 70.0), (62.3, 53.2), (61.5, 52.7)),
+    comparison_row("USVI-ReID", "H2H", "TIP 2021", (30.2, 29.4), (None, None), (23.8, 18.9), (None, None)),
+    comparison_row("USVI-ReID", "OTLA", "ECCV 2022", (29.9, 27.1), (29.8, 38.8), (32.9, 29.7), (32.1, 28.6)),
+    comparison_row("USVI-ReID", "ADCA", "ACM MM 2022", (45.5, 42.7), (50.6, 59.1), (67.2, 64.1), (68.5, 63.8)),
+    comparison_row("USVI-ReID", "NGLR", "CVPR 2023", (50.4, 47.4), (53.5, 61.7), (85.6, 76.7), (82.9, 75.0)),
+    comparison_row("USVI-ReID", "MBCCM", "ACM MM 2023", (53.1, 48.2), (55.2, 62.0), (83.8, 77.9), (82.8, 76.7)),
+    comparison_row("USVI-ReID", "CCLNet", "ACM MM 2023", (54.0, 50.2), (56.7, 65.1), (69.9, 65.5), (70.2, 66.7)),
+    comparison_row("USVI-ReID", "PGM", "TIFS 2023", (57.3, 51.8), (56.2, 62.7), (69.5, 65.4), (69.9, 65.2)),
+    comparison_row("USVI-ReID", "GUR*", "ICCV 2023", (61.0, 57.0), (64.2, 69.5), (73.9, 70.2), (75.0, 69.9)),
+    comparison_row("USVI-ReID", "MMM", "CVPR 2024", (61.6, 57.9), (64.4, 70.4), (89.7, 80.5), (85.8, 77.0)),
+    comparison_row("USVI-ReID", "PCLHD", "Ours, NeurIPS 2024", (64.4, 58.7), (69.5, 74.4), (84.3, 80.7), (82.7, 78.4)),
+    comparison_row("USVI-ReID", "PCLHD+MMM", "Enhanced, NeurIPS 2024", (65.9, 61.8), (70.3, 74.9), (89.6, 83.7), (87.0, 80.9)),
 ]
 
 
@@ -265,14 +296,19 @@ def parse_regdb_bidir_test(path: Path) -> dict[str, dict[str, float]]:
 
 
 def build_comparison_rows(log_root: Path) -> list[dict[str, Any]]:
-    rows = [dict(row) for row in COMPARISON_ROWS]
+    rows = []
+    for index, row in enumerate(COMPARISON_ROWS):
+        enriched = dict(row)
+        enriched["sort_order"] = index
+        rows.append(enriched)
     bidir = parse_regdb_bidir_test(log_root / "regdb_s2_test_bidir.log")
     v2t = bidir.get("regdb_v2t", {})
     t2v = bidir.get("regdb_t2v", {})
     rows.append(
         {
             "type": "USVI-ReID",
-            "method": "PCLHD reproduced, stage2 avg",
+            "method": "PCLHD (Ours, reproduced)",
+            "venue": "NeurIPS 2024 / reproduced",
             "sysu_all_rank1": None,
             "sysu_all_map": None,
             "sysu_indoor_rank1": None,
@@ -282,6 +318,8 @@ def build_comparison_rows(log_root: Path) -> list[dict[str, Any]]:
             "regdb_t2v_rank1": t2v.get("rank1"),
             "regdb_t2v_map": t2v.get("map"),
             "source": "reproduced",
+            "is_ours": True,
+            "sort_order": 10_000,
         }
     )
     return rows
@@ -338,7 +376,7 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
             "split_policy": "RegDB trials 1-10. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "comparison_source": "Literature rows are transcribed from arXiv:2402.19026v3 Table 1. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
+            "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper Table 1, including its Venue column. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
         },
         "summary_rows": summary_rows,
         "epoch_rows": epoch_rows,
@@ -517,6 +555,21 @@ def build_html(payload: dict[str, Any]) -> str:
       margin: 10px 0 0;
       font-size: 12px;
     }}
+    .tag {{
+      display: inline-block;
+      margin-left: 6px;
+      border: 1px solid #bfdbfe;
+      border-radius: 999px;
+      background: #eff6ff;
+      color: #1d4ed8;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 760;
+      vertical-align: middle;
+    }}
+    .ours-row td {{
+      font-weight: 680;
+    }}
     code {{
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       font-size: 12px;
@@ -585,7 +638,7 @@ def build_html(payload: dict[str, Any]) -> str:
       <h2>对比实验表格</h2>
       <div class="controls">
         <label>Types<select id="compareTypeFilter" multiple></select></label>
-        <label>Search<input id="compareSearchInput" type="search" placeholder="method, type, source"></label>
+        <label>Search<input id="compareSearchInput" type="search" placeholder="method, type, venue, source"></label>
         <button id="clearCompareFilters" type="button">Clear</button>
       </div>
       <p class="caption-title">表 5.2 不同方法在 SYSU-MM01 数据集上的定量对比</p>
@@ -596,6 +649,7 @@ def build_html(payload: dict[str, Any]) -> str:
             <tr>
               <th data-key="type" rowspan="2">类型</th>
               <th data-key="method" rowspan="2">方法</th>
+              <th data-key="venue" rowspan="2">来源</th>
               <th colspan="2">全搜索</th>
               <th colspan="2">室内搜索</th>
             </tr>
@@ -617,6 +671,7 @@ def build_html(payload: dict[str, Any]) -> str:
             <tr>
               <th data-key="type" rowspan="2">类型</th>
               <th data-key="method" rowspan="2">方法</th>
+              <th data-key="venue" rowspan="2">来源</th>
               <th colspan="2">可见光-红外</th>
               <th colspan="2">红外-可见光</th>
             </tr>
@@ -630,7 +685,7 @@ def build_html(payload: dict[str, Any]) -> str:
           <tbody></tbody>
         </table>
       </div>
-      <p class="source-note muted">文献行来自 arXiv:2402.19026v3 Table 1；“PCLHD reproduced, stage2 avg”来自本次复现的 <code>logs/regdb_s2_test_bidir.log</code>。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
+      <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文 Table 1；来源列沿用论文的 Venue 标注并展开年份。“PCLHD (Ours, reproduced)”是本次复现结果，来自 <code>logs/regdb_s2_test_bidir.log</code>，并固定放在默认排序的最后一行。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
     </section>
     <section class="panel">
       <h2>术语解释</h2>
@@ -724,14 +779,14 @@ def build_html(payload: dict[str, Any]) -> str:
     const state = {{
       summarySort: {{ key: 'trial', dir: 'asc' }},
       epochSort: {{ key: 'trial', dir: 'asc' }},
-      sysuCompareSort: {{ key: 'type', dir: 'asc' }},
-      regdbCompareSort: {{ key: 'type', dir: 'asc' }}
+      sysuCompareSort: {{ key: 'sort_order', dir: 'asc' }},
+      regdbCompareSort: {{ key: 'sort_order', dir: 'asc' }}
     }};
 
     const summaryColumns = ['trial', 'stage', 'status', 'epoch_count', 'best_epoch', 'best_rank1', 'best_map_epoch', 'best_map', 'best_minp', 'checkpoint_epoch', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_map', 'final_associate_rate', 'runtime', 'batch_size', 'checkpoint_exists', 'log_path'];
     const epochColumns = ['trial', 'stage', 'epoch', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'best_r1', 'best_map', 'associate_rate', 'log_path'];
-    const sysuCompareColumns = ['type', 'method', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map'];
-    const regdbCompareColumns = ['type', 'method', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map'];
+    const sysuCompareColumns = ['type', 'method', 'venue', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map'];
+    const regdbCompareColumns = ['type', 'method', 'venue', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map'];
     const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map']);
 
     function uniqueValues(rows, key) {{
@@ -793,6 +848,10 @@ def build_html(payload: dict[str, Any]) -> str:
 
     function compareCell(row, key) {{
       const value = row[key];
+      if (key === 'method') {{
+        const tag = row.is_ours ? '<span class="tag">Ours</span>' : '';
+        return `<td>${{escapeHtml(value ?? '')}}${{tag}}</td>`;
+      }}
       if (metricKeys.has(key)) {{
         if (value === null || value === undefined || Number.isNaN(Number(value))) return '<td class="num muted">-</td>';
         return `<td class="num" style="${{metricColor(value)}}">${{fmtNumber(value)}}</td>`;
@@ -864,7 +923,7 @@ def build_html(payload: dict[str, Any]) -> str:
     function renderComparisonTable(tableId, columns, sortState) {{
       const tbody = document.querySelector(`#${{tableId}} tbody`);
       const rows = sortRows(DATA.comparison_rows.filter(comparisonMatches), sortState);
-      tbody.innerHTML = rows.map(row => `<tr>${{columns.map(key => compareCell(row, key)).join('')}}</tr>`).join('');
+      tbody.innerHTML = rows.map(row => `<tr class="${{row.is_ours ? 'ours-row' : ''}}">${{columns.map(key => compareCell(row, key)).join('')}}</tr>`).join('');
       updateHeaderState(tableId, sortState);
     }}
 
