@@ -5,6 +5,26 @@ import torch.nn as nn
 import torch
 from torch.nn import functional as F
 
+try:
+    from torch.amp import autocast, GradScaler
+    _AMP_HAS_DEVICE_ARG = True
+except ImportError:  # pragma: no cover - compatibility for older torch
+    from torch.cuda.amp import autocast, GradScaler
+    _AMP_HAS_DEVICE_ARG = False
+
+
+def _amp_autocast(enabled):
+    if _AMP_HAS_DEVICE_ARG:
+        return autocast("cuda", enabled=enabled)
+    return autocast(enabled=enabled)
+
+
+def _make_scaler(enabled):
+    try:
+        return GradScaler("cuda", enabled=enabled)
+    except TypeError:  # torch.cuda.amp.GradScaler
+        return GradScaler(enabled=enabled)
+
 
 def pdist_torch(emb1, emb2):
     '''
@@ -49,8 +69,9 @@ class ClusterContrastTrainer_DCL(object):
         # self.tri = TripletLoss_ADP(alpha = 1, gamma = 1, square = 1)
 
     def train(self, epoch, data_loader_ir, data_loader_rgb,
-              optimizer, print_freq=10, train_iters=400):
+              optimizer, print_freq=10, train_iters=400, use_amp=False, scaler=None):
         self.encoder.train()
+        scaler = scaler or _make_scaler(use_amp)
 
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -70,16 +91,22 @@ class ClusterContrastTrainer_DCL(object):
             # forward
             inputs_rgb = torch.cat((inputs_rgb, inputs_rgb1), 0)
             labels_rgb = torch.cat((labels_rgb, labels_rgb), -1)
-            _, f_out_rgb, f_out_ir, labels_rgb, labels_ir, pool_rgb, pool_ir = self._forward(inputs_rgb, inputs_ir,
-                                                                                             label_1=labels_rgb,
-                                                                                             label_2=labels_ir, modal=0)
+            with _amp_autocast(use_amp):
+                _, f_out_rgb, f_out_ir, labels_rgb, labels_ir, pool_rgb, pool_ir = self._forward(inputs_rgb, inputs_ir,
+                                                                                                 label_1=labels_rgb,
+                                                                                                 label_2=labels_ir, modal=0)
 
-            loss_ir = self.memory_ir(f_out_ir, labels_ir)
-            loss_rgb = self.memory_rgb(f_out_rgb, labels_rgb)
-            loss = loss_ir + loss_rgb
+                loss_ir = self.memory_ir(f_out_ir, labels_ir)
+                loss_rgb = self.memory_rgb(f_out_rgb, labels_rgb)
+                loss = loss_ir + loss_rgb
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
             losses.update(loss.item())
 
@@ -121,9 +148,10 @@ class ClusterContrastTrainer_PCLMP(object):
         self.memory_all = memory
 
     def train(self, epoch, data_loader_ir, data_loader_rgb, data_loader_all_ir, data_loader_all_rgb,
-              optimizer, print_freq=10, train_iters=400, i2r=None, r2i=None):
+              optimizer, print_freq=10, train_iters=400, i2r=None, r2i=None, use_amp=False, scaler=None):
         self.encoder.train()
         self.encoder_ema.train()
+        scaler = scaler or _make_scaler(use_amp)
 
         batch_time = AverageMeter()
         data_time = AverageMeter()
@@ -143,45 +171,50 @@ class ClusterContrastTrainer_PCLMP(object):
             # forward
             inputs_rgb = torch.cat((inputs_rgb, inputs_rgb1), 0)
             labels_rgb = torch.cat((labels_rgb, labels_rgb), -1)
-            _, f_out_rgb, f_out_ir, labels_rgb, labels_ir, pool_rgb, pool_ir = self._forward(inputs_rgb, inputs_ir,
-                                                                                             label_1=labels_rgb,
-                                                                                             label_2=labels_ir,
-                                                                                             modal=0)
-            loss_ir = self.memory_ir(f_out_ir, labels_ir)
-            loss_rgb = self.memory_rgb(f_out_rgb, labels_rgb)
+            with _amp_autocast(use_amp):
+                _, f_out_rgb, f_out_ir, labels_rgb, labels_ir, pool_rgb, pool_ir = self._forward(inputs_rgb, inputs_ir,
+                                                                                                 label_1=labels_rgb,
+                                                                                                 label_2=labels_ir,
+                                                                                                 modal=0)
+                loss_ir = self.memory_ir(f_out_ir, labels_ir)
+                loss_rgb = self.memory_rgb(f_out_rgb, labels_rgb)
 
-            # cross contrastive learning
-            if r2i:
-                rgb2ir_labels = torch.tensor([r2i[key.item()] for key in labels_rgb]).cuda()
-                ir2rgb_labels = torch.tensor([i2r[key.item()] for key in labels_ir]).cuda()
-                alternate = True
-                if alternate:
-                    # accl
-                    if epoch % 2 == 1:
-                        cross_loss = 1 * self.memory_rgb(f_out_ir, ir2rgb_labels.long())
+                # cross contrastive learning
+                if r2i:
+                    rgb2ir_labels = torch.tensor([r2i[key.item()] for key in labels_rgb]).cuda()
+                    ir2rgb_labels = torch.tensor([i2r[key.item()] for key in labels_ir]).cuda()
+                    alternate = True
+                    if alternate:
+                        # accl
+                        if epoch % 2 == 1:
+                            cross_loss = 1 * self.memory_rgb(f_out_ir, ir2rgb_labels.long())
+                        else:
+                            cross_loss = 1 * self.memory_ir(f_out_rgb, rgb2ir_labels.long())
                     else:
-                        cross_loss = 1 * self.memory_ir(f_out_rgb, rgb2ir_labels.long())
+                        cross_loss = self.memory_rgb(f_out_ir, ir2rgb_labels.long()) + self.memory_ir(f_out_rgb, rgb2ir_labels.long())
                 else:
-                    cross_loss = self.memory_rgb(f_out_ir, ir2rgb_labels.long()) + self.memory_ir(f_out_rgb, rgb2ir_labels.long())
-            else:
-                cross_loss = torch.tensor(0.0)
+                    cross_loss = f_out_rgb.new_tensor(0.0)
 
-            new_loss_rgb = loss_rgb
-            new_cross_loss = cross_loss
+                new_loss_rgb = loss_rgb
+                new_cross_loss = cross_loss
 
-            
-            with torch.no_grad():
-                _, f_out_rgb_ema, f_out_ir_ema, labels_rgb_ema, labels_ir_ema, pool_rgb_ema, pool_ir_ema = self._forward_ema(inputs_rgb, inputs_ir,
-                                                                                            label_1=labels_rgb,
-                                                                                            label_2=labels_ir, modal=0)
-            loss_ir_ema = self.memory_ir(f_out_ir_ema, labels_ir_ema, model_name='encoder_ema')
-            loss_rgb_ema = self.memory_rgb(f_out_rgb_ema, labels_rgb_ema, model_name='encoder_ema')
-            loss_ema = loss_ir_ema + loss_rgb_ema
-            loss = loss_ir + new_loss_rgb + 0.25 * new_cross_loss + loss_ema  # total loss
+                with torch.no_grad():
+                    _, f_out_rgb_ema, f_out_ir_ema, labels_rgb_ema, labels_ir_ema, pool_rgb_ema, pool_ir_ema = self._forward_ema(inputs_rgb, inputs_ir,
+                                                                                                label_1=labels_rgb,
+                                                                                                label_2=labels_ir, modal=0)
+                loss_ir_ema = self.memory_ir(f_out_ir_ema, labels_ir_ema, model_name='encoder_ema')
+                loss_rgb_ema = self.memory_rgb(f_out_rgb_ema, labels_rgb_ema, model_name='encoder_ema')
+                loss_ema = loss_ir_ema + loss_rgb_ema
+                loss = loss_ir + new_loss_rgb + 0.25 * new_cross_loss + loss_ema  # total loss
 
             optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            if use_amp:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
             losses.update(loss.item())
 
@@ -194,19 +227,25 @@ class ClusterContrastTrainer_PCLMP(object):
             inputs_all_rgb = torch.cat((inputs_all_rgb, inputs_all_rgb1), 0)
             labels_all_rgb = torch.cat((labels_all_rgb, labels_all_rgb), -1)
 
-            _, f_out_all_rgb, f_out_all_ir, labels_all_rgb, labels_all_ir, pool_all_rgb, pool_all_ir = self._forward(
-                                                                                        inputs_all_rgb, inputs_all_ir,
-                                                                                        label_1=labels_all_rgb,
-                                                                                        label_2=labels_all_ir, modal=0)
+            with _amp_autocast(use_amp):
+                _, f_out_all_rgb, f_out_all_ir, labels_all_rgb, labels_all_ir, pool_all_rgb, pool_all_ir = self._forward(
+                                                                                            inputs_all_rgb, inputs_all_ir,
+                                                                                            label_1=labels_all_rgb,
+                                                                                            label_2=labels_all_ir, modal=0)
 
-            loss_all_ir = self.memory_all(f_out_all_ir, labels_all_ir)
-            loss_all_rgb = self.memory_all(f_out_all_rgb, labels_all_rgb)
+                loss_all_ir = self.memory_all(f_out_all_ir, labels_all_ir)
+                loss_all_rgb = self.memory_all(f_out_all_rgb, labels_all_rgb)
 
-            loss2 = loss_all_ir + loss_all_rgb
+                loss2 = loss_all_ir + loss_all_rgb
 
             optimizer.zero_grad()
-            loss2.backward()
-            optimizer.step()
+            if use_amp:
+                scaler.scale(loss2).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss2.backward()
+                optimizer.step()
             
             self._update_ema_variables(self.encoder, self.encoder_ema, 0.999)
 

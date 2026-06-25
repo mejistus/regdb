@@ -143,7 +143,7 @@ class base_resnet(nn.Module):
 
 #####
 class embed_net_ori(nn.Module):
-    def __init__(self,  num_classes=1000, no_local= 'on', gm_pool = 'on', arch='resnet50'):
+    def __init__(self,  num_classes=1000, no_local= 'on', gm_pool = 'on', arch='resnet50', dropout=0):
         super(embed_net_ori, self).__init__()
 
         self.thermal_module = thermal_module(arch=arch)
@@ -172,6 +172,9 @@ class embed_net_ori(nn.Module):
         self.l2norm = Normalize(2)
         self.bottleneck = nn.BatchNorm1d(pool_dim)
         self.bottleneck.bias.requires_grad_(False)  # no shift
+        self.dropout = dropout
+        if self.dropout > 0:
+            self.drop = nn.Dropout(self.dropout)
 
         self.classifier = nn.Linear(pool_dim, num_classes, bias=False)
 
@@ -242,6 +245,8 @@ class embed_net_ori(nn.Module):
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
         feat = self.bottleneck(x_pool)
+        if self.dropout > 0:
+            feat = self.drop(feat)
 
 
         if self.training:
@@ -258,11 +263,11 @@ class embed_net_ori(nn.Module):
 
 
 
-def agw(pretrained=False,no_local= 'down', **kwargs):
+def agw(pretrained=False,no_local= 'down', dropout=0, **kwargs):
     """Constructs a ResNet-50 model.
     Args:
         pretrained (bool): If True, returns a model pre-trained on ImageNet
     """
-    model = embed_net_ori(no_local= 'on', gm_pool = 'on') #without no-local -> resnet with non-local->agw
+    model = embed_net_ori(no_local= 'on', gm_pool = 'on', dropout=dropout) #without no-local -> resnet with non-local->agw
 
     return model

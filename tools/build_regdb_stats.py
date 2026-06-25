@@ -105,6 +105,47 @@ COMPARISON_ROWS: list[dict[str, Any]] = [
 ]
 
 
+QUICK_TRIALS = [1, 2, 3]
+QUICK_EXPERIMENTS: list[dict[str, Any]] = [
+    {
+        "experiment": "baseline_quick",
+        "label": "PCLHD quick baseline",
+        "method": "PCLHD",
+        "folder": "regdb_s2_baseline_quick",
+        "mdue": False,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 1,
+        "dropout": 0.0,
+        "notes": "Stage2-only quick baseline, 3 RegDB splits.",
+    },
+    {
+        "experiment": "mdue_quick",
+        "label": "PCLHD + MDUE",
+        "method": "PCLHD+MDUE",
+        "folder": "regdb_s2_mdue_quick",
+        "mdue": True,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "MC-Dropout uncertainty estimation, S=3 and p=0.10.",
+    },
+    {
+        "experiment": "mdue_cgcf_quick",
+        "label": "PCLHD + MDUE + CGCF",
+        "method": "PCLHD+MDUE+CGCF",
+        "folder": "regdb_s2_mdue_cgcf_quick",
+        "mdue": True,
+        "cgcf": True,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "Full chapter-5 reproduction path for the quick 3-split run.",
+    },
+]
+
+
 def parse_value(raw: str) -> Any:
     raw = raw.strip()
     if raw in {"True", "False"}:
@@ -218,7 +259,15 @@ def parse_log(path: Path, trial: int, stage: str) -> tuple[dict[str, Any], list[
         "epoch_count": len(epochs),
         "runtime": runtime,
         "batch_size": args.get("batch_size"),
+        "iters": args.get("iters"),
+        "epochs": args.get("epochs"),
         "stage2_batch_size": args.get("stage2_batch_size"),
+        "stage1_log_name": args.get("stage1_log_name"),
+        "stage2_log_name": args.get("stage2_log_name"),
+        "amp": args.get("amp"),
+        "dropout": args.get("dropout"),
+        "mdue_samples": args.get("mdue_samples"),
+        "use_cgcf": args.get("use_cgcf"),
         "seed": args.get("seed"),
         "data_dir": args.get("data_dir"),
         "logs_dir": args.get("logs_dir"),
@@ -325,11 +374,90 @@ def build_comparison_rows(log_root: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    quick_rows: list[dict[str, Any]] = []
+    aggregate_rows: list[dict[str, Any]] = []
+
+    for config in QUICK_EXPERIMENTS:
+        complete_rows: list[dict[str, Any]] = []
+        for trial in QUICK_TRIALS:
+            log_path = log_root / config["folder"] / str(trial) / f"{trial}log.txt"
+            summary, _ = parse_log(log_path, trial, "quick_stage2")
+            row = dict(summary)
+            row.update(
+                {
+                    "experiment": config["experiment"],
+                    "experiment_label": config["label"],
+                    "method": config["method"],
+                    "folder": config["folder"],
+                    "expected_mdue": config["mdue"],
+                    "expected_cgcf": config["cgcf"],
+                    "expected_amp": config["amp"],
+                    "notes": config["notes"],
+                }
+            )
+            quick_rows.append(row)
+            if row["complete"]:
+                complete_rows.append(row)
+
+        best_r1 = finite_values(complete_rows, "best_rank1")
+        best_map = finite_values(complete_rows, "best_map")
+        complete_trials = len(complete_rows)
+        expected_trials = len(QUICK_TRIALS)
+        if complete_trials == expected_trials:
+            status = "complete"
+        elif complete_trials == 0:
+            status = "pending"
+        else:
+            status = "running_or_incomplete"
+        aggregate_rows.append(
+            {
+                "experiment": config["experiment"],
+                "experiment_label": config["label"],
+                "method": config["method"],
+                "folder": config["folder"],
+                "mdue": config["mdue"],
+                "cgcf": config["cgcf"],
+                "amp": config["amp"],
+                "mdue_samples": config["mdue_samples"],
+                "dropout": config["dropout"],
+                "trials": ",".join(str(trial) for trial in QUICK_TRIALS),
+                "expected_trials": expected_trials,
+                "complete_trials": complete_trials,
+                "status": status,
+                "complete": complete_trials == expected_trials,
+                "mean_best_rank1": mean(best_r1) if best_r1 else None,
+                "mean_best_map": mean(best_map) if best_map else None,
+                "max_best_rank1": max(best_r1) if best_r1 else None,
+                "max_best_map": max(best_map) if best_map else None,
+                "notes": config["notes"],
+            }
+        )
+
+    baseline = next((row for row in aggregate_rows if row["experiment"] == "baseline_quick"), None)
+    baseline_r1 = baseline.get("mean_best_rank1") if baseline else None
+    baseline_map = baseline.get("mean_best_map") if baseline else None
+    for row in aggregate_rows:
+        row["delta_rank1"] = (
+            row["mean_best_rank1"] - baseline_r1
+            if isinstance(row.get("mean_best_rank1"), (int, float)) and isinstance(baseline_r1, (int, float))
+            else None
+        )
+        row["delta_map"] = (
+            row["mean_best_map"] - baseline_map
+            if isinstance(row.get("mean_best_map"), (int, float)) and isinstance(baseline_map, (int, float))
+            else None
+        )
+
+    return quick_rows, aggregate_rows
+
+
 def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
     summary_rows: list[dict[str, Any]] = []
     epoch_rows: list[dict[str, Any]] = []
     missing_logs: list[str] = []
     incomplete_runs: list[str] = []
+    quick_rows, quick_aggregate_rows = collect_quick_ablations(log_root)
 
     for trial in trials:
         for stage, folder in (("stage1", "regdb_s1"), ("stage2", "regdb_s2")):
@@ -361,6 +489,10 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         "stage2_best_map_mean": mean(stage2_best_map) if stage2_best_map else None,
         "stage2_best_rank1_max": max(stage2_best_r1) if stage2_best_r1 else None,
         "stage2_best_map_max": max(stage2_best_map) if stage2_best_map else None,
+        "quick_expected_run_count": len(quick_rows),
+        "quick_complete_run_count": sum(1 for row in quick_rows if row["complete"]),
+        "quick_expected_config_count": len(quick_aggregate_rows),
+        "quick_complete_config_count": sum(1 for row in quick_aggregate_rows if row["complete"]),
     }
     validation["ok"] = (
         validation["actual_run_count"] == expected_run_count
@@ -374,12 +506,14 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "RegDB trials 1-10. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
+            "split_policy": "Full reproduction uses RegDB trials 1-10. Quick ablations use trials 1-3 only. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper Table 1, including its Venue column. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
         },
         "summary_rows": summary_rows,
         "epoch_rows": epoch_rows,
+        "quick_rows": quick_rows,
+        "quick_aggregate_rows": quick_aggregate_rows,
         "comparison_rows": build_comparison_rows(log_root),
         "validation": validation,
     }
@@ -519,7 +653,7 @@ def build_html(payload: dict[str, Any]) -> str:
     }}
     .flow-steps {{
       display: grid;
-      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 10px;
       margin-top: 12px;
       padding: 0;
@@ -617,21 +751,28 @@ def build_html(payload: dict[str, Any]) -> str:
           <p><code>stage2</code> 从 stage1 checkpoint 继续训练，加入跨模态关联和二分图匹配，把 RGB 与 IR 中可能属于同一人的聚类对应起来，重点优化跨模态检索性能。</p>
         </div>
         <div class="explain-block">
+          <h3>论文第 5 章创新点</h3>
+          <p><code>MDUE</code> 在特征抽取时保持 Dropout 随机性，多次前向估计样本表征方差，并把低方差样本赋予更高置信度。本次快速复现按论文设置 <code>S=3</code>、<code>p=0.10</code>。</p>
+          <p><code>CGCF</code> 在 All-memory 原型构造时，不再简单平均 RGB/IR 中心，而是用模态置信度和跨模态一致性加权融合簇中心。</p>
+        </div>
+        <div class="explain-block">
           <h3>本次复现设置</h3>
           <p>环境使用 Python 3.12、PyTorch 2.6.0、单张 Tesla V100 16GB。由于 batch 64 在后续 trial 出现显存边缘 OOM，剩余 trial 已改为 batch 32 续跑；表格中的 <code>Batch</code> 列会记录每个 run 的实际 batch size。</p>
-          <p>最终报告以完成的 stage2 结果为主；当前报告如果显示 incomplete，表示还有 trial 尚未全部完成。</p>
+          <p>完整复现保留 10 split 结果；论文创新点复现实验只跑 trial 1-3 的快速消融，并用 <code>AMP fp16</code> 加速训练。</p>
         </div>
       </div>
     </section>
     <section class="panel">
       <h2>算法流程</h2>
-      <p>本项目把无监督跨模态 ReID 拆成“单模态伪标签初始化”和“跨模态关联优化”两段。训练过程中每个 epoch 会重新抽取特征、聚类、构造 memory，并用伪标签和跨模态匹配关系更新网络。</p>
+      <p>本项目把无监督跨模态 ReID 拆成“单模态伪标签初始化”和“跨模态关联优化”两段。论文第 5 章的最终方法在此基础上加入 MDUE 样本置信度和 CGCF 跨模态中心融合。</p>
       <ol class="flow-steps">
         <li><strong>1. 数据准备</strong><span>读取 RegDB/SYSU 的 RGB 与 IR 图像，按官方划分生成训练集、查询集和图库。</span></li>
         <li><strong>2. 特征初始化</strong><span>使用 ImageNet 预训练 backbone 提取两种模态的初始特征，并用 GeM/BNNeck 形成检索向量。</span></li>
         <li><strong>3. Stage1 聚类训练</strong><span>分别对 RGB 与 IR 特征做 DBSCAN 聚类，把聚类 ID 当作伪标签，用 DCL 和 ClusterMemory 训练初始模型。</span></li>
-        <li><strong>4. Stage2 跨模态关联</strong><span>加载 stage1 checkpoint，构造 RGB、IR、All 三组 memory，通过跨模态相似度和二分图匹配建立 RGB-IR 原型对应关系。</span></li>
-        <li><strong>5. 评估与汇总</strong><span>用最终 stage2 checkpoint 做 visible-to-thermal 与 thermal-to-visible 检索，汇总 Rank-1、mAP、mINP 和逐 trial 均值。</span></li>
+        <li><strong>4. MDUE 特征抽取</strong><span>开启 MC-Dropout，原图和水平翻转图各做多次随机前向，取均值作为稳健特征，并由方差得到样本置信度。</span></li>
+        <li><strong>5. CGCF 原型融合</strong><span>对同一 All-cluster 的 RGB/IR 中心，用模态置信度和中心相似度计算权重，得到更可靠的统一跨模态原型。</span></li>
+        <li><strong>6. Stage2 跨模态关联</strong><span>加载 stage1 checkpoint，构造 RGB、IR、All 三组 memory，通过跨模态相似度和二分图匹配建立 RGB-IR 原型对应关系。</span></li>
+        <li><strong>7. 评估与汇总</strong><span>用最终 stage2 checkpoint 做 visible-to-thermal 与 thermal-to-visible 检索，汇总 Rank-1、mAP、mINP 和逐 trial 均值。</span></li>
       </ol>
     </section>
     <section class="panel">
@@ -688,6 +829,60 @@ def build_html(payload: dict[str, Any]) -> str:
       <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文 Table 1；来源列沿用论文的 Venue 标注并展开年份。“PCLHD (Ours, reproduced)”是本次复现结果，来自 <code>logs/regdb_s2_test_bidir.log</code>，并固定放在默认排序的最后一行。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
     </section>
     <section class="panel">
+      <h2>3 Split Quick Ablations</h2>
+      <div class="controls">
+        <label>Configs<select id="quickExperimentFilter" multiple></select></label>
+        <label>Search<input id="quickSearchInput" type="search" placeholder="method, config, status, folder"></label>
+        <button id="clearQuickFilters" type="button">Clear</button>
+      </div>
+      <p class="muted">这些消融只跑 RegDB trial 1-3，用于快速验证论文第 5 章创新点趋势；不等价于论文正式 10 split 均值。</p>
+      <div class="table-wrap">
+        <table id="quickAblationTable">
+          <thead>
+            <tr>
+              <th data-key="experiment_label">配置</th>
+              <th data-key="method">方法</th>
+              <th data-key="mdue">MDUE</th>
+              <th data-key="cgcf">CGCF</th>
+              <th data-key="amp">AMP</th>
+              <th data-key="mdue_samples">S</th>
+              <th data-key="dropout">Dropout</th>
+              <th data-key="complete_trials">Done</th>
+              <th data-key="mean_best_rank1">Mean Best R1</th>
+              <th data-key="mean_best_map">Mean Best mAP</th>
+              <th data-key="delta_rank1">Delta R1</th>
+              <th data-key="delta_map">Delta mAP</th>
+              <th data-key="status">Status</th>
+              <th data-key="folder">Log folder</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="table-wrap" style="margin-top:12px;">
+        <table id="quickTrialTable">
+          <thead>
+            <tr>
+              <th data-key="experiment_label">配置</th>
+              <th data-key="trial">Trial</th>
+              <th data-key="status">Status</th>
+              <th data-key="epoch_count">Epochs</th>
+              <th data-key="best_rank1">Best R1</th>
+              <th data-key="best_map">Best mAP</th>
+              <th data-key="final_rank1">Final R1</th>
+              <th data-key="final_map">Final mAP</th>
+              <th data-key="amp">AMP</th>
+              <th data-key="mdue_samples">S</th>
+              <th data-key="use_cgcf">CGCF</th>
+              <th data-key="runtime">Runtime</th>
+              <th data-key="log_path">Log</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+    <section class="panel">
       <h2>术语解释</h2>
       <dl class="term-list">
         <dt>run</dt><dd>一次具体训练任务。完整 RegDB 复现包含 10 个 trial，每个 trial 有 stage1 和 stage2，所以一共 20 个 run。</dd>
@@ -698,6 +893,9 @@ def build_html(payload: dict[str, Any]) -> str:
         <dt>mAP</dt><dd>mean Average Precision，综合衡量排序列表中所有正确匹配的位置，越高说明整体排序越好。</dd>
         <dt>mINP</dt><dd>mean Inverse Negative Penalty，更关注最后一个正确匹配在排序中的位置，反映困难样本检索质量。</dd>
         <dt>Assoc</dt><dd>stage2 中 RGB/IR 聚类成功建立跨模态关联的比例。它用于观察跨模态匹配是否逐步稳定。</dd>
+        <dt>MDUE</dt><dd>MC-Dropout Uncertainty Estimation。通过多次随机前向计算样本特征均值与方差，把不稳定样本转成低置信度。</dd>
+        <dt>CGCF</dt><dd>Confidence-Guided Cross-modal Center Fusion。用样本置信度和 RGB/IR 中心一致性加权融合跨模态原型。</dd>
+        <dt>AMP</dt><dd>Automatic Mixed Precision。训练前向和反向使用 fp16 混合精度，以降低显存占用并提升吞吐。</dd>
         <dt>Best R1</dt><dd>该 run 中 Rank-1 最高的 epoch，对应主要 checkpoint 选择依据。</dd>
         <dt>Best mAP</dt><dd>该 run 中 mAP 的最高值。本报告把 Best R1 和 Best mAP 分开计算，因为最高 Rank-1 和最高 mAP 不一定发生在同一个 epoch。</dd>
       </dl>
@@ -780,14 +978,19 @@ def build_html(payload: dict[str, Any]) -> str:
       summarySort: {{ key: 'trial', dir: 'asc' }},
       epochSort: {{ key: 'trial', dir: 'asc' }},
       sysuCompareSort: {{ key: 'sort_order', dir: 'asc' }},
-      regdbCompareSort: {{ key: 'sort_order', dir: 'asc' }}
+      regdbCompareSort: {{ key: 'sort_order', dir: 'asc' }},
+      quickAblationSort: {{ key: 'experiment', dir: 'asc' }},
+      quickTrialSort: {{ key: 'experiment', dir: 'asc' }}
     }};
 
     const summaryColumns = ['trial', 'stage', 'status', 'epoch_count', 'best_epoch', 'best_rank1', 'best_map_epoch', 'best_map', 'best_minp', 'checkpoint_epoch', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_map', 'final_associate_rate', 'runtime', 'batch_size', 'checkpoint_exists', 'log_path'];
     const epochColumns = ['trial', 'stage', 'epoch', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'best_r1', 'best_map', 'associate_rate', 'log_path'];
     const sysuCompareColumns = ['type', 'method', 'venue', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map'];
     const regdbCompareColumns = ['type', 'method', 'venue', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map'];
-    const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map']);
+    const quickAblationColumns = ['experiment_label', 'method', 'mdue', 'cgcf', 'amp', 'mdue_samples', 'dropout', 'complete_trials', 'mean_best_rank1', 'mean_best_map', 'delta_rank1', 'delta_map', 'status', 'folder'];
+    const quickTrialColumns = ['experiment_label', 'trial', 'status', 'epoch_count', 'best_rank1', 'best_map', 'final_rank1', 'final_map', 'amp', 'mdue_samples', 'use_cgcf', 'runtime', 'log_path'];
+    const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map', 'mean_best_rank1', 'mean_best_map', 'max_best_rank1', 'max_best_map']);
+    const deltaKeys = new Set(['delta_rank1', 'delta_map']);
 
     function uniqueValues(rows, key) {{
       return Array.from(new Set(rows.map(row => row[key]).filter(value => value !== null && value !== undefined))).sort((a, b) => String(a).localeCompare(String(b), undefined, {{ numeric: true }}));
@@ -859,6 +1062,24 @@ def build_html(payload: dict[str, Any]) -> str:
       return `<td>${{escapeHtml(value ?? '')}}</td>`;
     }}
 
+    function fmtDelta(value) {{
+      const num = Number(value);
+      if (value === null || value === undefined || Number.isNaN(num)) return '';
+      return `${{num >= 0 ? '+' : ''}}${{num.toFixed(2)}}`;
+    }}
+
+    function quickCell(row, key) {{
+      const value = row[key];
+      if (key === 'status') return `<td>${{renderStatus(row)}}</td>`;
+      if (typeof value === 'boolean') return `<td>${{value ? 'yes' : 'no'}}</td>`;
+      if (key === 'dropout') return `<td class="num">${{fmtNumber(value)}}</td>`;
+      if (deltaKeys.has(key)) return `<td class="num">${{fmtDelta(value)}}</td>`;
+      if (metricKeys.has(key)) return `<td class="num" style="${{metricColor(value)}}">${{fmtPercent(value)}}</td>`;
+      if (typeof value === 'number') return `<td class="num">${{fmtNumber(value, Number.isInteger(value) ? 0 : 2)}}</td>`;
+      if (String(key).includes('path') || key === 'log_path' || key === 'folder') return `<td class="mono">${{escapeHtml(value ?? '')}}</td>`;
+      return `<td>${{escapeHtml(value ?? '')}}</td>`;
+    }}
+
     function rowMatches(row) {{
       const trialValues = selectedValues('trialFilter');
       const stageValues = selectedValues('stageFilter');
@@ -874,6 +1095,15 @@ def build_html(payload: dict[str, Any]) -> str:
       const typeValues = selectedValues('compareTypeFilter');
       if (typeValues.length && !typeValues.includes(String(row.type))) return false;
       const needle = document.getElementById('compareSearchInput').value.trim().toLowerCase();
+      if (!needle) return true;
+      const haystack = Object.values(row).join(' ').toLowerCase();
+      return haystack.includes(needle);
+    }}
+
+    function quickMatches(row) {{
+      const experimentValues = selectedValues('quickExperimentFilter');
+      if (experimentValues.length && !experimentValues.includes(String(row.experiment))) return false;
+      const needle = document.getElementById('quickSearchInput').value.trim().toLowerCase();
       if (!needle) return true;
       const haystack = Object.values(row).join(' ').toLowerCase();
       return haystack.includes(needle);
@@ -932,10 +1162,31 @@ def build_html(payload: dict[str, Any]) -> str:
       renderComparisonTable('regdbCompareTable', regdbCompareColumns, state.regdbCompareSort);
     }}
 
+    function renderQuickAblationTable() {{
+      const tbody = document.querySelector('#quickAblationTable tbody');
+      const rows = sortRows(DATA.quick_aggregate_rows.filter(quickMatches), state.quickAblationSort);
+      tbody.innerHTML = rows.map(row => `<tr>${{quickAblationColumns.map(key => quickCell(row, key)).join('')}}</tr>`).join('');
+      updateHeaderState('quickAblationTable', state.quickAblationSort);
+    }}
+
+    function renderQuickTrialTable() {{
+      const tbody = document.querySelector('#quickTrialTable tbody');
+      const rows = sortRows(DATA.quick_rows.filter(quickMatches), state.quickTrialSort);
+      tbody.innerHTML = rows.map(row => `<tr>${{quickTrialColumns.map(key => quickCell(row, key)).join('')}}</tr>`).join('');
+      updateHeaderState('quickTrialTable', state.quickTrialSort);
+    }}
+
+    function renderQuickTables() {{
+      renderQuickAblationTable();
+      renderQuickTrialTable();
+    }}
+
     function renderCards() {{
       const validation = DATA.validation;
       const completeRuns = validation.complete_run_count;
       const expectedRuns = validation.expected_run_count;
+      const quickComplete = validation.quick_complete_run_count;
+      const quickExpected = validation.quick_expected_run_count;
       const maxR1 = validation.stage2_best_rank1_max;
       const meanR1 = validation.stage2_best_rank1_mean;
       const meanMap = validation.stage2_best_map_mean;
@@ -943,7 +1194,8 @@ def build_html(payload: dict[str, Any]) -> str:
         ['Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.ok ? 'all expected logs complete' : 'missing or incomplete logs remain'],
         ['Stage2 Best R1', maxR1 === null ? '' : fmtPercent(maxR1), 'max over completed stage2 trials'],
         ['Stage2 Mean R1', meanR1 === null ? '' : fmtPercent(meanR1), `${{validation.complete_stage2_count}} completed stage2 trials`],
-        ['Stage2 Mean mAP', meanMap === null ? '' : fmtPercent(meanMap), 'mean max mAP over completed stage2 trials']
+        ['Stage2 Mean mAP', meanMap === null ? '' : fmtPercent(meanMap), 'mean max mAP over completed stage2 trials'],
+        ['Quick Ablations', `${{quickComplete}} / ${{quickExpected}}`, 'trial 1-3 ablation runs complete']
       ];
       document.getElementById('cards').innerHTML = cards.map(([label, value, note]) => `<article class="card"><div class="label">${{escapeHtml(label)}}</div><div class="value">${{escapeHtml(value || 'n/a')}}</div><div class="note">${{escapeHtml(note)}}</div></article>`).join('');
     }}
@@ -957,6 +1209,8 @@ def build_html(payload: dict[str, Any]) -> str:
         `<div><strong>Status:</strong> ${{validation.ok ? 'complete' : 'incomplete'}}</div>`,
         `<div><strong>Summary rows:</strong> ${{validation.actual_run_count}} / ${{validation.expected_run_count}}</div>`,
         `<div><strong>Epoch rows:</strong> ${{validation.epoch_row_count}}</div>`,
+        `<div><strong>Quick ablation runs:</strong> ${{validation.quick_complete_run_count}} / ${{validation.quick_expected_run_count}}</div>`,
+        `<div><strong>Quick ablation configs:</strong> ${{validation.quick_complete_config_count}} / ${{validation.quick_expected_config_count}}</div>`,
         `<div><strong>Missing logs:</strong> <span class="mono">${{escapeHtml(missing)}}</span></div>`,
         `<div><strong>Incomplete runs:</strong> <span class="mono">${{escapeHtml(incomplete)}}</span></div>`,
         `<div><strong>Metric policy:</strong> ${{escapeHtml(manifest.metric_policy)}}</div>`,
@@ -967,6 +1221,7 @@ def build_html(payload: dict[str, Any]) -> str:
     function renderAll() {{
       renderCards();
       renderComparisonTables();
+      renderQuickTables();
       renderSummaryTable();
       renderEpochTable();
       renderValidation();
@@ -977,7 +1232,9 @@ def build_html(payload: dict[str, Any]) -> str:
         summary: state.summarySort,
         epoch: state.epochSort,
         sysuCompare: state.sysuCompareSort,
-        regdbCompare: state.regdbCompareSort
+        regdbCompare: state.regdbCompareSort,
+        quickAblation: state.quickAblationSort,
+        quickTrial: state.quickTrialSort
       }}[target];
       if (sortState.key === key) {{
         sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
@@ -992,11 +1249,14 @@ def build_html(payload: dict[str, Any]) -> str:
       document.getElementById('trialFilter').innerHTML = optionHtml(uniqueValues(DATA.summary_rows, 'trial'));
       document.getElementById('stageFilter').innerHTML = optionHtml(uniqueValues(DATA.summary_rows, 'stage'));
       document.getElementById('compareTypeFilter').innerHTML = optionHtml(uniqueValues(DATA.comparison_rows, 'type'));
+      document.getElementById('quickExperimentFilter').innerHTML = optionHtml(uniqueValues(DATA.quick_aggregate_rows, 'experiment'));
       document.getElementById('trialFilter').addEventListener('change', renderAll);
       document.getElementById('stageFilter').addEventListener('change', renderAll);
       document.getElementById('searchInput').addEventListener('input', renderAll);
       document.getElementById('compareTypeFilter').addEventListener('change', renderAll);
       document.getElementById('compareSearchInput').addEventListener('input', renderAll);
+      document.getElementById('quickExperimentFilter').addEventListener('change', renderAll);
+      document.getElementById('quickSearchInput').addEventListener('input', renderAll);
       document.getElementById('clearFilters').addEventListener('click', () => {{
         document.getElementById('trialFilter').selectedIndex = -1;
         document.getElementById('stageFilter').selectedIndex = -1;
@@ -1008,10 +1268,17 @@ def build_html(payload: dict[str, Any]) -> str:
         document.getElementById('compareSearchInput').value = '';
         renderAll();
       }});
+      document.getElementById('clearQuickFilters').addEventListener('click', () => {{
+        document.getElementById('quickExperimentFilter').selectedIndex = -1;
+        document.getElementById('quickSearchInput').value = '';
+        renderAll();
+      }});
       document.querySelectorAll('#summaryTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('summary', th.dataset.key)));
       document.querySelectorAll('#epochTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('epoch', th.dataset.key)));
       document.querySelectorAll('#sysuCompareTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('sysuCompare', th.dataset.key)));
       document.querySelectorAll('#regdbCompareTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('regdbCompare', th.dataset.key)));
+      document.querySelectorAll('#quickAblationTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('quickAblation', th.dataset.key)));
+      document.querySelectorAll('#quickTrialTable th[data-key]').forEach(th => th.addEventListener('click', () => setSort('quickTrial', th.dataset.key)));
       renderAll();
     }}
 

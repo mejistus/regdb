@@ -21,7 +21,7 @@ from clustercontrast import datasets
 from clustercontrast import models
 from clustercontrast.models.cm import ClusterMemory
 from clustercontrast.trainers import ClusterContrastTrainer_DCL, ClusterContrastTrainer_PCLMP
-from clustercontrast.evaluators import Evaluator, extract_features
+from clustercontrast.evaluators import Evaluator, extract_features, confidence_fusion_features
 from clustercontrast.utils.data import IterLoader
 from clustercontrast.utils.data import transforms as T
 from clustercontrast.utils.data.preprocessor import Preprocessor,Preprocessor_color
@@ -304,6 +304,64 @@ def eval_regdb(distmat, q_pids, g_pids, max_rank = 20):
     mINP = np.mean(all_INP)
     return all_cmc, mAP, mINP
 
+
+def mdue_sample_count(args):
+    return args.mdue_samples if args.mdue_samples and args.mdue_samples > 1 else 1
+
+
+def confidence_tensor(confidences, samples):
+    if confidences is None:
+        return torch.ones(len(samples), dtype=torch.float32)
+    values = [float(confidences.get(fname, 1.0)) for fname, _, _ in samples]
+    return torch.tensor(values, dtype=torch.float32)
+
+
+@torch.no_grad()
+def generate_cgcf_cluster_features(labels, num_cluster_all, features, file, confidences):
+    centers_ir = collections.defaultdict(list)
+    centers_rgb = collections.defaultdict(list)
+    conf_ir = collections.defaultdict(list)
+    conf_rgb = collections.defaultdict(list)
+
+    for i, (label, (fname, _, cid)) in enumerate(zip(labels, file)):
+        if label == -1:
+            continue
+        label = int(label)
+        if 'rgb_modify' in fname:
+            centers_rgb[label].append(features[i])
+            conf_rgb[label].append(confidences[i])
+        elif 'ir_modify' in fname:
+            centers_ir[label].append(features[i])
+            conf_ir[label].append(confidences[i])
+        else:
+            raise AssertionError
+
+    centers_all = []
+    stats = {"both": 0, "rgb_only": 0, "ir_only": 0}
+    for i in range(num_cluster_all):
+        has_rgb = len(centers_rgb[i]) > 0
+        has_ir = len(centers_ir[i]) > 0
+        if has_rgb:
+            mu_rgb = torch.stack(centers_rgb[i], dim=0).mean(0)
+        if has_ir:
+            mu_ir = torch.stack(centers_ir[i], dim=0).mean(0)
+        if has_rgb and has_ir:
+            c_rgb = torch.stack(conf_rgb[i], dim=0).mean()
+            c_ir = torch.stack(conf_ir[i], dim=0).mean()
+            centers_all.append(confidence_fusion_features(mu_rgb, mu_ir, c_rgb, c_ir))
+            stats["both"] += 1
+        elif has_rgb:
+            centers_all.append(mu_rgb)
+            stats["rgb_only"] += 1
+        elif has_ir:
+            centers_all.append(mu_ir)
+            stats["ir_only"] += 1
+        else:
+            raise AssertionError("Empty cluster id {}".format(i))
+
+    return torch.stack(centers_all, dim=0), stats
+
+
 def associated_analysis_for_all(all_origin, all_pred, image_paths_for_all, log_dir):
     label_count_all = -1
     all_label_set = list(set(all_pred))
@@ -343,8 +401,8 @@ def main():
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
         cudnn.deterministic = True
-    log_s1_name = 'regdb_s1'
-    log_s2_name = 'regdb_s2'
+    log_s1_name = args.stage1_log_name
+    log_s2_name = args.stage2_log_name
     if args.stage in ('all', 'stage1'):
         main_worker_stage1(args,log_s1_name)
     args.logs_dir = base_logs_dir
@@ -386,6 +444,11 @@ def main_worker_stage1(args,log_s1_name):
 
     # Trainer
     trainer = ClusterContrastTrainer_DCL(model)
+    mc_drop = mdue_sample_count(args)
+    if args.amp:
+        print("AMP fp16 training enabled")
+    if mc_drop > 1:
+        print("MDUE enabled in feature extraction: samples={} dropout={}".format(mc_drop, args.dropout))
 
     for epoch in range(args.epochs):
         with torch.no_grad():
@@ -403,7 +466,7 @@ def main_worker_stage1(args,log_s1_name):
             cluster_loader_rgb = get_test_loader(dataset_rgb, args.height, args.width,
                                              args.batch_size, args.workers, 
                                              testset=sorted(dataset_rgb.train))
-            features_rgb, _, _ = extract_features(model, cluster_loader_rgb, print_freq=50,mode=1)
+            features_rgb, _, _ = extract_features(model, cluster_loader_rgb, print_freq=50,mode=1, mc_drop=mc_drop)
             del cluster_loader_rgb,
             features_rgb = torch.cat([features_rgb[f].unsqueeze(0) for f, _, _ in sorted(dataset_rgb.train)], 0)
 
@@ -412,7 +475,7 @@ def main_worker_stage1(args,log_s1_name):
             cluster_loader_ir = get_test_loader(dataset_ir, args.height, args.width,
                                              args.batch_size, args.workers, 
                                              testset=sorted(dataset_ir.train))
-            features_ir, _, _ = extract_features(model, cluster_loader_ir, print_freq=50,mode=2)
+            features_ir, _, _ = extract_features(model, cluster_loader_ir, print_freq=50,mode=2, mc_drop=mc_drop)
             del cluster_loader_ir
             features_ir = torch.cat([features_ir[f].unsqueeze(0) for f, _, _ in sorted(dataset_ir.train)], 0)
 
@@ -525,7 +588,7 @@ def main_worker_stage1(args,log_s1_name):
         train_loader_rgb.new_epoch()
 
         trainer.train(epoch, train_loader_ir,train_loader_rgb, optimizer,
-                      print_freq=args.print_freq, train_iters=len(train_loader_ir))
+                      print_freq=args.print_freq, train_iters=len(train_loader_ir), use_amp=args.amp)
 
         if epoch>=0:
 ##############################
@@ -588,6 +651,7 @@ def main_worker_stage1(args,log_s1_name):
 
 def main_worker_stage2(args,log_s1_name,log_s2_name):
     base_logs_dir = args.logs_dir
+    stage1_logs_dir = args.stage1_logs_dir or base_logs_dir
     if args.stage2_batch_size > 0:
         args.batch_size = args.stage2_batch_size
     logs_dir_root = osp.join(base_logs_dir, log_s2_name)
@@ -615,7 +679,7 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
     test_loader_rgb = get_test_loader(dataset_rgb, args.height, args.width, args.batch_size, args.workers)
     # Create model
     model, model_ema = create_model(args)
-    checkpoint = load_checkpoint(osp.join(base_logs_dir, log_s1_name, str(trial), 'model_best.pth.tar'))
+    checkpoint = load_checkpoint(osp.join(stage1_logs_dir, log_s1_name, str(trial), 'model_best.pth.tar'))
 
     model.load_state_dict(checkpoint['state_dict'])
     model_ema.load_state_dict(checkpoint['state_dict'])
@@ -625,6 +689,15 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.1)
     # Trainer
     trainer = ClusterContrastTrainer_PCLMP(model, model_ema)
+    mc_drop = mdue_sample_count(args)
+    if args.amp:
+        print("AMP fp16 training enabled")
+    if mc_drop > 1:
+        print("MDUE enabled in feature extraction: samples={} dropout={}".format(mc_drop, args.dropout))
+        if args.dropout <= 0:
+            print("WARNING: --mdue-samples > 1 but --dropout <= 0, MC-Dropout variance will be weak")
+    if args.use_cgcf:
+        print("CGCF enabled for all-modality prototype fusion")
 
     for epoch in range(args.epochs):
         with torch.no_grad():
@@ -642,36 +715,41 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
 
             print('==> Create pseudo labels for unlabeled RGB data')
 
+            rgb_train = sorted(dataset_rgb.train)
             cluster_loader_rgb = get_test_loader(dataset_rgb, args.height, args.width,
-                                             args.batch_size, args.workers, 
-                                             testset=sorted(dataset_rgb.train))
-            features_rgb_ema, _, _ = extract_features(model_ema, cluster_loader_rgb, print_freq=50, mode=1)
-            features_rgb_ema = torch.cat([features_rgb_ema[f].unsqueeze(0) for f, _, _ in sorted(dataset_rgb.train)], 0)
-            features_rgb, _, _ = extract_features(model, cluster_loader_rgb, print_freq=50,mode=1)
+                                             args.batch_size, args.workers,
+                                             testset=rgb_train)
+            features_rgb_ema, _, _ = extract_features(model_ema, cluster_loader_rgb, print_freq=50, mode=1, mc_drop=mc_drop)
+            features_rgb_ema = torch.cat([features_rgb_ema[f].unsqueeze(0) for f, _, _ in rgb_train], 0)
+            features_rgb, _, confidences_rgb = extract_features(model, cluster_loader_rgb, print_freq=50,mode=1, mc_drop=mc_drop)
             del cluster_loader_rgb,
-            features_rgb = torch.cat([features_rgb[f].unsqueeze(0) for f, _, _ in sorted(dataset_rgb.train)], 0)
+            features_rgb = torch.cat([features_rgb[f].unsqueeze(0) for f, _, _ in rgb_train], 0)
+            confidences_rgb = confidence_tensor(confidences_rgb, rgb_train)
 
-            
+
             print('==> Create pseudo labels for unlabeled IR data')
+            ir_train = sorted(dataset_ir.train)
             cluster_loader_ir = get_test_loader(dataset_ir, args.height, args.width,
-                                             args.batch_size, args.workers, 
-                                             testset=sorted(dataset_ir.train))
-            features_ir_ema, _, _ = extract_features(model_ema, cluster_loader_ir, print_freq=50, mode=2)
-            features_ir_ema = torch.cat([features_ir_ema[f].unsqueeze(0) for f, _, _ in sorted(dataset_ir.train)], 0)
-            features_ir, _, _ = extract_features(model, cluster_loader_ir, print_freq=50,mode=2)
+                                             args.batch_size, args.workers,
+                                             testset=ir_train)
+            features_ir_ema, _, _ = extract_features(model_ema, cluster_loader_ir, print_freq=50, mode=2, mc_drop=mc_drop)
+            features_ir_ema = torch.cat([features_ir_ema[f].unsqueeze(0) for f, _, _ in ir_train], 0)
+            features_ir, _, confidences_ir = extract_features(model, cluster_loader_ir, print_freq=50,mode=2, mc_drop=mc_drop)
             del cluster_loader_ir
-            features_ir = torch.cat([features_ir[f].unsqueeze(0) for f, _, _ in sorted(dataset_ir.train)], 0)
+            features_ir = torch.cat([features_ir[f].unsqueeze(0) for f, _, _ in ir_train], 0)
+            confidences_ir = confidence_tensor(confidences_ir, ir_train)
 
             print('==> Create pseudo labels for unlabeled ALL data')
             features_all = torch.cat([features_rgb, features_ir], dim=0)
+            confidences_all = torch.cat([confidences_rgb, confidences_ir], dim=0)
+            all_train = rgb_train + ir_train
             
             rerank_dist_ir = compute_jaccard_distance(features_ir, k1=args.k1, k2=args.k2,search_option=3)#rerank_dist_all_jacard[features_rgb.size(0):,features_rgb.size(0):]#
             pseudo_labels_ir = cluster_ir.fit_predict(rerank_dist_ir)
             rerank_dist_rgb = compute_jaccard_distance(features_rgb, k1=args.k1, k2=args.k2,search_option=3)#rerank_dist_all_jacard[:features_rgb.size(0),:features_rgb.size(0)]#
             pseudo_labels_rgb = cluster_rgb.fit_predict(rerank_dist_rgb)
             rerank_dist_all = compute_modal_invariant_jaccard_distance(features_all, k1=40, k2=32,
-                                                                       file=sorted(dataset_rgb.train) + sorted(
-                                                                           dataset_ir.train), search_option=3)
+                                                                       file=all_train, search_option=3)
             pseudo_labels_all = cluster_all.fit_predict(rerank_dist_all)            
             del rerank_dist_rgb
             del rerank_dist_ir
@@ -744,10 +822,13 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
         memory_features_rgb = generate_random_features(pseudo_labels_rgb, features_rgb_ema, num_cluster_rgb, args.num_instances)
         cluster_features_ir = generate_cluster_features(pseudo_labels_ir, features_ir)
         cluster_features_rgb = generate_cluster_features(pseudo_labels_rgb, features_rgb)
-        cluster_features_all = generate_modal_invariant_cluster_features(pseudo_labels_all, num_cluster_all,
-                                                                         features_all,
-                                                                         sorted(dataset_rgb.train) + sorted(
-                                                                             dataset_ir.train))
+        if args.use_cgcf:
+            cluster_features_all, cgcf_stats = generate_cgcf_cluster_features(pseudo_labels_all, num_cluster_all,
+                                                                              features_all, all_train, confidences_all)
+            print("CGCF prototype stats: both={both} rgb_only={rgb_only} ir_only={ir_only}".format(**cgcf_stats))
+        else:
+            cluster_features_all = generate_modal_invariant_cluster_features(pseudo_labels_all, num_cluster_all,
+                                                                             features_all, all_train)
         memory_ir = ClusterMemory(model.module.num_features, num_cluster_ir, temp=args.temp,
                                   momentum=args.momentum, mode=args.memorybank, smooth=args.smooth,
                                   num_instances=args.num_instances).cuda()
@@ -798,7 +879,7 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
         all_label = []
         all_file_name = []
         for i, ((fname, _, cid), label) in enumerate(
-                zip(sorted(dataset_rgb.train) + sorted(dataset_ir.train), pseudo_labels_all)):
+                zip(all_train, pseudo_labels_all)):
             if label != -1:
                 all_file_name.append(fname)
                 all_label.append(label.item())
@@ -811,7 +892,7 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
         pseudo_labeled_dataset_all_ir = []
         pseudo_labeled_dataset_all_rgb = []
         for i, ((fname, _, cid), label) in enumerate(
-                zip(sorted(dataset_rgb.train) + sorted(dataset_ir.train), pseudo_labels_all)):
+                zip(all_train, pseudo_labels_all)):
             if label != -1:
                 all_file_name.append(fname)
                 all_label.append(label.item())
@@ -915,7 +996,7 @@ def main_worker_stage2(args,log_s1_name,log_s2_name):
 
 
         trainer.train(epoch, train_loader_ir, train_loader_rgb, train_loader_all_ir, train_loader_all_rgb, optimizer,
-                      print_freq=args.print_freq, train_iters=len(train_loader_ir), i2r=i2r, r2i=r2i)
+                      print_freq=args.print_freq, train_iters=len(train_loader_ir), i2r=i2r, r2i=r2i, use_amp=args.amp)
 
         if epoch>=0:
 ##############################
@@ -1026,6 +1107,18 @@ if __name__ == '__main__':
                         choices=['all', 'stage1', 'stage2'])
     parser.add_argument('--stage2-batch-size', type=int, default=0,
                         help='Use a smaller batch size for stage2; 0 keeps --batch-size.')
+    parser.add_argument('--stage1-log-name', type=str, default='regdb_s1',
+                        help='Folder name for stage1 logs/checkpoints under --logs-dir.')
+    parser.add_argument('--stage2-log-name', type=str, default='regdb_s2',
+                        help='Folder name for stage2 logs/checkpoints under --logs-dir.')
+    parser.add_argument('--stage1-logs-dir', type=str, default=None,
+                        help='Optional root directory for loading stage1 checkpoints.')
+    parser.add_argument('--amp', action='store_true',
+                        help='Use CUDA AMP fp16 for training forwards and optimizer steps.')
+    parser.add_argument('--mdue-samples', type=int, default=1,
+                        help='MC-Dropout stochastic forward samples for MDUE feature extraction.')
+    parser.add_argument('--use-cgcf', action='store_true',
+                        help='Use confidence-guided cross-modal center fusion for all-modality prototypes.')
     parser.add_argument('--temp', type=float, default=0.05,
                         help="temperature for scaling contrastive loss")
     # path
