@@ -100,8 +100,18 @@ COMPARISON_ROWS: list[dict[str, Any]] = [
     comparison_row("USVI-ReID", "PGM", "TIFS 2023", (57.3, 51.8), (56.2, 62.7), (69.5, 65.4), (69.9, 65.2)),
     comparison_row("USVI-ReID", "GUR*", "ICCV 2023", (61.0, 57.0), (64.2, 69.5), (73.9, 70.2), (75.0, 69.9)),
     comparison_row("USVI-ReID", "MMM", "arXiv 2024", (61.6, 57.9), (64.4, 70.4), (89.7, 80.5), (85.8, 77.0)),
-    comparison_row("USVI-ReID", "PCLHD", "Ours, NeurIPS 2024", (64.4, 58.7), (69.5, 74.4), (84.3, 80.7), (82.7, 78.4)),
-    comparison_row("USVI-ReID", "PCLHD+MMM", "Enhanced, NeurIPS 2024", (65.9, 61.8), (70.3, 74.9), (89.6, 83.7), (87.0, 80.9)),
+    comparison_row("USVI-ReID", "PCLHD", "NeurIPS 2024", (64.4, 58.7), (69.5, 74.4), (84.3, 80.7), (82.7, 78.4)),
+    comparison_row("USVI-ReID", "PCLHD+MDUE", "NeurIPS 2024", (65.19, 60.24), (69.56, 74.18), (91.12, 83.21), (89.48, 82.24)),
+    comparison_row(
+        "USVI-ReID",
+        "PCLHD+MDUE+CGCF",
+        "Ours, NeurIPS 2024",
+        (66.31, 61.44),
+        (72.49, 75.64),
+        (93.57, 85.69),
+        (91.59, 84.08),
+        is_ours=True,
+    ),
 ]
 
 
