@@ -492,27 +492,6 @@ def build_comparison_rows(log_root: Path) -> list[dict[str, Any]]:
         enriched = dict(row)
         enriched["sort_order"] = index
         rows.append(enriched)
-    bidir = parse_regdb_bidir_test(log_root / "regdb_s2_test_bidir.log")
-    v2t = bidir.get("regdb_v2t", {})
-    t2v = bidir.get("regdb_t2v", {})
-    rows.append(
-        {
-            "type": "USVI-ReID",
-            "method": "PCLHD (Ours, reproduced)",
-            "venue": "NeurIPS 2024 / reproduced",
-            "sysu_all_rank1": None,
-            "sysu_all_map": None,
-            "sysu_indoor_rank1": None,
-            "sysu_indoor_map": None,
-            "regdb_v2t_rank1": v2t.get("rank1"),
-            "regdb_v2t_map": v2t.get("map"),
-            "regdb_t2v_rank1": t2v.get("rank1"),
-            "regdb_t2v_map": t2v.get("map"),
-            "source": "reproduced",
-            "is_ours": True,
-            "sort_order": 10_000,
-        }
-    )
     return rows
 
 
@@ -727,9 +706,9 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "Full reproduction uses RegDB trials 1-10. Ablation and paper-parameter checks use trials 1-3 unless otherwise noted. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
+            "split_policy": "Full reproduction uses RegDB trials 1-10. Ablation and paper-parameter checks use trials 1-3 unless otherwise noted. Training logs are visible-to-thermal.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper Table 1, including its Venue column. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
+            "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper tables, including venue/year columns. Reproduced AMP runs are reported in the ablation and paper-parameter tables.",
         },
         "summary_rows": summary_rows,
         "epoch_rows": epoch_rows,
@@ -1093,7 +1072,7 @@ def build_html(payload: dict[str, Any]) -> str:
           <tbody></tbody>
         </table>
       </div>
-      <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文 Table 1；来源列沿用论文的 Venue 标注并展开年份。“PCLHD (Ours, reproduced)”是本次复现结果，来自 <code>logs/regdb_s2_test_bidir.log</code>，并固定放在默认排序的最后一行。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
+      <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文表格；来源列沿用论文的 Venue/年份标注。论文最终方法 <code>PCLHD+MDUE+CGCF</code> 标为 Ours 并固定在默认排序的最后一行；本次 AMP 复现实验结果在下方消融与 paper-parameter 表中单独展示。</p>
     </section>
     <section class="panel">
       <h2>AMP vs FP32 Baseline Check</h2>
