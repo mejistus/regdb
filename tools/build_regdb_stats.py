@@ -464,12 +464,76 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
     return quick_rows, aggregate_rows
 
 
+def build_precision_summary(quick_aggregate_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    amp_baseline = next(
+        (row for row in quick_aggregate_rows if row["experiment"] == "baseline_quick"),
+        None,
+    )
+    fp32_baseline = next(
+        (row for row in quick_aggregate_rows if row["experiment"] == "baseline_fp32_quick"),
+        None,
+    )
+
+    amp_r1 = amp_baseline.get("mean_best_rank1") if amp_baseline else None
+    amp_map = amp_baseline.get("mean_best_map") if amp_baseline else None
+    fp32_r1 = fp32_baseline.get("mean_best_rank1") if fp32_baseline else None
+    fp32_map = fp32_baseline.get("mean_best_map") if fp32_baseline else None
+    delta_r1 = (
+        fp32_r1 - amp_r1
+        if isinstance(fp32_r1, (int, float)) and isinstance(amp_r1, (int, float))
+        else None
+    )
+    delta_map = (
+        fp32_map - amp_map
+        if isinstance(fp32_map, (int, float)) and isinstance(amp_map, (int, float))
+        else None
+    )
+    expected_trials = len(QUICK_TRIALS)
+    amp_complete = amp_baseline.get("complete_trials", 0) if amp_baseline else 0
+    fp32_complete = fp32_baseline.get("complete_trials", 0) if fp32_baseline else 0
+    complete = bool(
+        amp_baseline
+        and fp32_baseline
+        and amp_complete == expected_trials
+        and fp32_complete == expected_trials
+    )
+
+    if not complete:
+        status = "evidence_incomplete"
+        conclusion = "FP32 baseline is still running or missing; wait for all quick trials before deciding whether numeric precision explains the gap."
+    elif abs(delta_r1 or 0.0) <= 0.5 and abs(delta_map or 0.0) <= 0.5:
+        status = "precision_unlikely"
+        conclusion = "FP32 and AMP quick baselines are within 0.5 percentage points; numeric precision is unlikely to be the main source of the paper gap."
+    else:
+        status = "precision_difference"
+        conclusion = "FP32 and AMP quick baselines differ by more than 0.5 percentage points; inspect the FP32 runs before ruling out numeric precision."
+
+    return {
+        "status": status,
+        "complete": complete,
+        "expected_trials": expected_trials,
+        "amp_complete_trials": amp_complete,
+        "fp32_complete_trials": fp32_complete,
+        "amp_mean_best_rank1": amp_r1,
+        "amp_mean_best_map": amp_map,
+        "fp32_mean_best_rank1": fp32_r1,
+        "fp32_mean_best_map": fp32_map,
+        "delta_rank1": delta_r1,
+        "delta_map": delta_map,
+        "threshold_pp": 0.5,
+        "conclusion": conclusion,
+        "amp_folder": amp_baseline.get("folder") if amp_baseline else None,
+        "fp32_folder": fp32_baseline.get("folder") if fp32_baseline else None,
+    }
+
+
 def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
     summary_rows: list[dict[str, Any]] = []
     epoch_rows: list[dict[str, Any]] = []
     missing_logs: list[str] = []
     incomplete_runs: list[str] = []
     quick_rows, quick_aggregate_rows = collect_quick_ablations(log_root)
+    precision_summary = build_precision_summary(quick_aggregate_rows)
 
     for trial in trials:
         for stage, folder in (("stage1", "regdb_s1"), ("stage2", "regdb_s2")):
@@ -505,6 +569,10 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         "quick_complete_run_count": sum(1 for row in quick_rows if row["complete"]),
         "quick_expected_config_count": len(quick_aggregate_rows),
         "quick_complete_config_count": sum(1 for row in quick_aggregate_rows if row["complete"]),
+        "precision_check_status": precision_summary["status"],
+        "precision_check_complete": precision_summary["complete"],
+        "precision_delta_rank1": precision_summary["delta_rank1"],
+        "precision_delta_map": precision_summary["delta_map"],
     }
     validation["ok"] = (
         validation["actual_run_count"] == expected_run_count
@@ -526,6 +594,7 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         "epoch_rows": epoch_rows,
         "quick_rows": quick_rows,
         "quick_aggregate_rows": quick_aggregate_rows,
+        "precision_summary": precision_summary,
         "comparison_rows": build_comparison_rows(log_root),
         "validation": validation,
     }
@@ -701,6 +770,50 @@ def build_html(payload: dict[str, Any]) -> str:
       margin: 10px 0 0;
       font-size: 12px;
     }}
+    .precision-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }}
+    .precision-card {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 10px;
+    }}
+    .precision-card .label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .precision-card .metric {{
+      margin-top: 4px;
+      font-size: 20px;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }}
+    .precision-card .sub {{
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .precision-callout {{
+      grid-column: 1 / -1;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      color: var(--muted);
+    }}
+    .precision-callout.complete {{
+      border-color: #abefc6;
+      background: #f6fef9;
+    }}
+    .precision-callout.incomplete {{
+      border-color: #fedf89;
+      background: #fffcf5;
+    }}
     .tag {{
       display: inline-block;
       margin-left: 6px;
@@ -731,6 +844,7 @@ def build_html(payload: dict[str, Any]) -> str:
       .cards {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .explain-grid {{ grid-template-columns: 1fr; }}
       .flow-steps {{ grid-template-columns: 1fr; }}
+      .precision-grid {{ grid-template-columns: 1fr; }}
       .term-list {{ grid-template-columns: 1fr; }}
       input, select {{ min-width: 100%; }}
       label {{ flex: 1 1 180px; }}
@@ -839,6 +953,11 @@ def build_html(payload: dict[str, Any]) -> str:
         </table>
       </div>
       <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文 Table 1；来源列沿用论文的 Venue 标注并展开年份。“PCLHD (Ours, reproduced)”是本次复现结果，来自 <code>logs/regdb_s2_test_bidir.log</code>，并固定放在默认排序的最后一行。SYSU-MM01 未在本次任务中重新训练，因此复现行的 SYSU 字段留空。</p>
+    </section>
+    <section class="panel">
+      <h2>AMP vs FP32 Baseline Check</h2>
+      <p>这里只比较同一套 3 split quick baseline：<code>baseline_quick</code> 使用 AMP，<code>baseline_fp32_quick</code> 关闭 AMP。它用于隔离“混合精度是否导致指标差异”，不等价于论文正式 10 split 结果。</p>
+      <div class="precision-grid" id="precisionSummary"></div>
     </section>
     <section class="panel">
       <h2>3 Split Quick Ablations</h2>
@@ -1174,6 +1293,31 @@ def build_html(payload: dict[str, Any]) -> str:
       renderComparisonTable('regdbCompareTable', regdbCompareColumns, state.regdbCompareSort);
     }}
 
+    function renderPrecisionSummary() {{
+      const target = document.getElementById('precisionSummary');
+      if (!target) return;
+      const p = DATA.precision_summary || {{}};
+      const statusClass = p.complete ? 'complete' : 'incomplete';
+      const rows = [
+        ['AMP quick baseline', p.amp_mean_best_rank1 === null ? '' : fmtPercent(p.amp_mean_best_rank1), `mAP ${{fmtPercent(p.amp_mean_best_map)}} · ${{p.amp_complete_trials ?? 0}}/${{p.expected_trials ?? 0}} trials`],
+        ['FP32 quick baseline', p.fp32_mean_best_rank1 === null ? '' : fmtPercent(p.fp32_mean_best_rank1), `mAP ${{fmtPercent(p.fp32_mean_best_map)}} · ${{p.fp32_complete_trials ?? 0}}/${{p.expected_trials ?? 0}} trials`],
+        ['Delta R1', p.delta_rank1 === null || p.delta_rank1 === undefined ? '' : `${{fmtDelta(p.delta_rank1)}} pp`, 'FP32 minus AMP'],
+        ['Delta mAP', p.delta_map === null || p.delta_map === undefined ? '' : `${{fmtDelta(p.delta_map)}} pp`, `threshold ${{fmtNumber(p.threshold_pp ?? 0.5)}} pp`]
+      ];
+      target.innerHTML = rows.map(([label, metric, sub]) => `
+        <article class="precision-card">
+          <div class="label">${{escapeHtml(label)}}</div>
+          <div class="metric">${{escapeHtml(metric || 'n/a')}}</div>
+          <div class="sub">${{escapeHtml(sub || '')}}</div>
+        </article>
+      `).join('') + `
+        <div class="precision-callout ${{statusClass}}">
+          <strong>Status:</strong> ${{escapeHtml(p.status ?? 'unknown')}}.
+          <strong>Conclusion:</strong> ${{escapeHtml(p.conclusion ?? '')}}
+        </div>
+      `;
+    }}
+
     function renderQuickAblationTable() {{
       const tbody = document.querySelector('#quickAblationTable tbody');
       const rows = sortRows(DATA.quick_aggregate_rows.filter(quickMatches), state.quickAblationSort);
@@ -1223,6 +1367,7 @@ def build_html(payload: dict[str, Any]) -> str:
         `<div><strong>Epoch rows:</strong> ${{validation.epoch_row_count}}</div>`,
         `<div><strong>Quick ablation runs:</strong> ${{validation.quick_complete_run_count}} / ${{validation.quick_expected_run_count}}</div>`,
         `<div><strong>Quick ablation configs:</strong> ${{validation.quick_complete_config_count}} / ${{validation.quick_expected_config_count}}</div>`,
+        `<div><strong>Precision check:</strong> ${{escapeHtml(validation.precision_check_status)}} (complete=${{validation.precision_check_complete ? 'yes' : 'no'}}, ΔR1=${{fmtDelta(validation.precision_delta_rank1)}} pp, ΔmAP=${{fmtDelta(validation.precision_delta_map)}} pp)</div>`,
         `<div><strong>Missing logs:</strong> <span class="mono">${{escapeHtml(missing)}}</span></div>`,
         `<div><strong>Incomplete runs:</strong> <span class="mono">${{escapeHtml(incomplete)}}</span></div>`,
         `<div><strong>Metric policy:</strong> ${{escapeHtml(manifest.metric_policy)}}</div>`,
@@ -1233,6 +1378,7 @@ def build_html(payload: dict[str, Any]) -> str:
     function renderAll() {{
       renderCards();
       renderComparisonTables();
+      renderPrecisionSummary();
       renderQuickTables();
       renderSummaryTable();
       renderEpochTable();
