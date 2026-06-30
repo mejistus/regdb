@@ -703,17 +703,18 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         "precision_delta_rank1": precision_summary["delta_rank1"],
         "precision_delta_map": precision_summary["delta_map"],
     }
-    validation["ok"] = (
+    validation["legacy_ok"] = (
         validation["actual_run_count"] == expected_run_count
         and not missing_logs
         and not incomplete_runs
     )
+    validation["ok"] = validation["legacy_ok"]
     validation["primary_full_ok"] = (
         validation["primary_full_expected_run_count"] > 0
         and validation["primary_full_complete_run_count"] == validation["primary_full_expected_run_count"]
         and validation["primary_full_complete_config_count"] == validation["primary_full_expected_config_count"]
     )
-    validation["report_ok"] = validation["primary_full_ok"] or validation["ok"]
+    validation["report_ok"] = validation["primary_full_ok"]
     return {
         "manifest": {
             "script": "tools/build_regdb_stats.py",
@@ -1521,7 +1522,7 @@ def build_html(payload: dict[str, Any]) -> str:
       const cards = [
         ['Report Status', validation.report_ok ? 'complete' : 'incomplete', validation.primary_full_ok ? 'full AMP runs complete' : 'waiting for full AMP runs'],
         ['Full AMP Runs', `${{primaryComplete}} / ${{primaryExpected}}`, 'paper-parameter baseline, MDUE, and MDUE+CGCF'],
-        ['Legacy Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.ok ? 'all expected legacy logs complete' : 'legacy logs may be missing'],
+        ['Legacy Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.legacy_ok ? 'all expected legacy logs complete' : 'legacy logs may be missing'],
         ['Stage2 Best R1', maxR1 === null ? '' : fmtPercent(maxR1), 'max over completed stage2 trials'],
         ['Stage2 Mean R1', meanR1 === null ? '' : fmtPercent(meanR1), `${{validation.complete_stage2_count}} completed stage2 trials`],
         ['Stage2 Mean mAP', meanMap === null ? '' : fmtPercent(meanMap), 'mean max mAP over completed stage2 trials'],
@@ -1539,7 +1540,7 @@ def build_html(payload: dict[str, Any]) -> str:
         `<div><strong>Report status:</strong> ${{validation.report_ok ? 'complete' : 'incomplete'}}</div>`,
         `<div><strong>Primary full AMP runs:</strong> ${{validation.primary_full_complete_run_count}} / ${{validation.primary_full_expected_run_count}}</div>`,
         `<div><strong>Primary full AMP configs:</strong> ${{validation.primary_full_complete_config_count}} / ${{validation.primary_full_expected_config_count}}</div>`,
-        `<div><strong>Legacy status:</strong> ${{validation.ok ? 'complete' : 'incomplete'}}</div>`,
+        `<div><strong>Legacy status:</strong> ${{validation.legacy_ok ? 'complete' : 'incomplete'}}</div>`,
         `<div><strong>Summary rows:</strong> ${{validation.actual_run_count}} / ${{validation.expected_run_count}}</div>`,
         `<div><strong>Epoch rows:</strong> ${{validation.epoch_row_count}}</div>`,
         `<div><strong>Quick ablation runs:</strong> ${{validation.quick_complete_run_count}} / ${{validation.quick_expected_run_count}}</div>`,
