@@ -112,6 +112,8 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "label": "PCLHD quick baseline",
         "method": "PCLHD",
         "folder": "regdb_s2_baseline_quick",
+        "group": "quick",
+        "baseline_experiment": "baseline_quick",
         "mdue": False,
         "cgcf": False,
         "amp": True,
@@ -124,6 +126,8 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "label": "PCLHD quick baseline (FP32)",
         "method": "PCLHD",
         "folder": "regdb_s2_baseline_fp32_quick",
+        "group": "precision",
+        "baseline_experiment": "baseline_quick",
         "mdue": False,
         "cgcf": False,
         "amp": False,
@@ -136,6 +140,8 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "label": "PCLHD + MDUE",
         "method": "PCLHD+MDUE",
         "folder": "regdb_s2_mdue_quick",
+        "group": "legacy_quick",
+        "baseline_experiment": "baseline_quick",
         "mdue": True,
         "cgcf": False,
         "amp": True,
@@ -148,12 +154,84 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "label": "PCLHD + MDUE + CGCF",
         "method": "PCLHD+MDUE+CGCF",
         "folder": "regdb_s2_mdue_cgcf_quick",
+        "group": "legacy_quick",
+        "baseline_experiment": "baseline_quick",
         "mdue": True,
         "cgcf": True,
         "amp": True,
         "mdue_samples": 3,
         "dropout": 0.1,
         "notes": "Full chapter-5 reproduction path for the quick 3-split run.",
+    },
+    {
+        "experiment": "mdue_fix_quick",
+        "label": "PCLHD + MDUE (fixed MC, quick)",
+        "method": "PCLHD+MDUE",
+        "folder": "regdb_s2_mdue_fix_quick",
+        "group": "fixed_quick",
+        "baseline_experiment": "baseline_quick",
+        "mdue": True,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "Corrected MC-Dropout: active only during uncertainty sampling; quick trial set.",
+    },
+    {
+        "experiment": "mdue_cgcf_fix_quick",
+        "label": "PCLHD + MDUE + CGCF (fixed MC, quick)",
+        "method": "PCLHD+MDUE+CGCF",
+        "folder": "regdb_s2_mdue_cgcf_fix_quick",
+        "group": "fixed_quick",
+        "baseline_experiment": "baseline_quick",
+        "mdue": True,
+        "cgcf": True,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "Corrected MDUE plus confidence-guided cross-modal center fusion; quick trial set.",
+    },
+    {
+        "experiment": "paper_amp_baseline",
+        "label": "PCLHD AMP baseline (paper params)",
+        "method": "PCLHD",
+        "folder": "regdb_s2_amp_baseline",
+        "group": "paper_amp",
+        "baseline_experiment": "paper_amp_baseline",
+        "mdue": False,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 1,
+        "dropout": 0.0,
+        "notes": "Stage2 AMP run with paper-aligned 50 epochs and 100 iters for trials 1-3.",
+    },
+    {
+        "experiment": "paper_amp_mdue",
+        "label": "PCLHD + MDUE AMP (paper params)",
+        "method": "PCLHD+MDUE",
+        "folder": "regdb_s2_amp_mdue",
+        "group": "paper_amp",
+        "baseline_experiment": "paper_amp_baseline",
+        "mdue": True,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "Paper-aligned AMP setting with MDUE S=3 and p=0.10.",
+    },
+    {
+        "experiment": "paper_amp_mdue_cgcf",
+        "label": "PCLHD + MDUE + CGCF AMP (paper params)",
+        "method": "PCLHD+MDUE+CGCF",
+        "folder": "regdb_s2_amp_mdue_cgcf",
+        "group": "paper_amp",
+        "baseline_experiment": "paper_amp_baseline",
+        "mdue": True,
+        "cgcf": True,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "notes": "Paper-aligned AMP setting with MDUE and CGCF enabled.",
     },
 ]
 
@@ -402,6 +480,8 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
                     "experiment_label": config["label"],
                     "method": config["method"],
                     "folder": config["folder"],
+                    "group": config["group"],
+                    "baseline_experiment": config["baseline_experiment"],
                     "expected_mdue": config["mdue"],
                     "expected_cgcf": config["cgcf"],
                     "expected_amp": config["amp"],
@@ -428,6 +508,8 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
                 "experiment_label": config["label"],
                 "method": config["method"],
                 "folder": config["folder"],
+                "group": config["group"],
+                "baseline_experiment": config["baseline_experiment"],
                 "mdue": config["mdue"],
                 "cgcf": config["cgcf"],
                 "amp": config["amp"],
@@ -446,10 +528,11 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
             }
         )
 
-    baseline = next((row for row in aggregate_rows if row["experiment"] == "baseline_quick"), None)
-    baseline_r1 = baseline.get("mean_best_rank1") if baseline else None
-    baseline_map = baseline.get("mean_best_map") if baseline else None
+    aggregate_by_experiment = {row["experiment"]: row for row in aggregate_rows}
     for row in aggregate_rows:
+        baseline = aggregate_by_experiment.get(row.get("baseline_experiment", "baseline_quick"))
+        baseline_r1 = baseline.get("mean_best_rank1") if baseline else None
+        baseline_map = baseline.get("mean_best_map") if baseline else None
         row["delta_rank1"] = (
             row["mean_best_rank1"] - baseline_r1
             if isinstance(row.get("mean_best_rank1"), (int, float)) and isinstance(baseline_r1, (int, float))
@@ -592,7 +675,7 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "Full reproduction uses RegDB trials 1-10. Quick ablations use trials 1-3 only. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
+            "split_policy": "Full reproduction uses RegDB trials 1-10. Ablation and paper-parameter checks use trials 1-3 unless otherwise noted. Training logs are visible-to-thermal; the comparison table also parses logs/regdb_s2_test_bidir.log when available.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper Table 1, including its Venue column. The reproduced RegDB row is parsed from logs/regdb_s2_test_bidir.log.",
         },
@@ -966,18 +1049,19 @@ def build_html(payload: dict[str, Any]) -> str:
       <div class="precision-grid" id="precisionSummary"></div>
     </section>
     <section class="panel">
-      <h2>3 Split Quick Ablations</h2>
+      <h2>Ablations and Paper-Parameter Runs</h2>
       <div class="controls">
         <label>Configs<select id="quickExperimentFilter" multiple></select></label>
         <label>Search<input id="quickSearchInput" type="search" placeholder="method, config, status, folder"></label>
         <button id="clearQuickFilters" type="button">Clear</button>
       </div>
-      <p class="muted">这些消融只跑 RegDB trial 1-3，用于快速验证论文第 5 章创新点趋势；不等价于论文正式 10 split 均值。</p>
+      <p class="muted">这里汇总 quick 消融、修复版 MDUE smoke，以及按论文参数启动的 AMP 组。默认使用 RegDB trial 1-3 判断趋势；不等价于论文正式 10 split 均值。</p>
       <div class="table-wrap">
         <table id="quickAblationTable">
           <thead>
             <tr>
               <th data-key="experiment_label">配置</th>
+              <th data-key="group">组</th>
               <th data-key="method">方法</th>
               <th data-key="mdue">MDUE</th>
               <th data-key="cgcf">CGCF</th>
@@ -990,6 +1074,7 @@ def build_html(payload: dict[str, Any]) -> str:
               <th data-key="delta_rank1">Delta R1</th>
               <th data-key="delta_map">Delta mAP</th>
               <th data-key="status">Status</th>
+              <th data-key="baseline_experiment">Baseline</th>
               <th data-key="folder">Log folder</th>
             </tr>
           </thead>
@@ -1010,6 +1095,7 @@ def build_html(payload: dict[str, Any]) -> str:
               <th data-key="final_map">Final mAP</th>
               <th data-key="amp">AMP</th>
               <th data-key="mdue_samples">S</th>
+              <th data-key="dropout">Dropout</th>
               <th data-key="use_cgcf">CGCF</th>
               <th data-key="runtime">Runtime</th>
               <th data-key="log_path">Log</th>
@@ -1124,8 +1210,8 @@ def build_html(payload: dict[str, Any]) -> str:
     const epochColumns = ['trial', 'stage', 'epoch', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'best_r1', 'best_map', 'associate_rate', 'log_path'];
     const sysuCompareColumns = ['type', 'method', 'venue', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map'];
     const regdbCompareColumns = ['type', 'method', 'venue', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map'];
-    const quickAblationColumns = ['experiment_label', 'method', 'mdue', 'cgcf', 'amp', 'mdue_samples', 'dropout', 'complete_trials', 'mean_best_rank1', 'mean_best_map', 'delta_rank1', 'delta_map', 'status', 'folder'];
-    const quickTrialColumns = ['experiment_label', 'trial', 'status', 'epoch_count', 'best_rank1', 'best_map', 'final_rank1', 'final_map', 'amp', 'mdue_samples', 'use_cgcf', 'runtime', 'log_path'];
+    const quickAblationColumns = ['experiment_label', 'group', 'method', 'mdue', 'cgcf', 'amp', 'mdue_samples', 'dropout', 'complete_trials', 'mean_best_rank1', 'mean_best_map', 'delta_rank1', 'delta_map', 'status', 'baseline_experiment', 'folder'];
+    const quickTrialColumns = ['experiment_label', 'trial', 'status', 'epoch_count', 'best_rank1', 'best_map', 'final_rank1', 'final_map', 'amp', 'mdue_samples', 'dropout', 'use_cgcf', 'runtime', 'log_path'];
     const metricKeys = new Set(['best_rank1', 'best_rank5', 'best_rank10', 'best_rank20', 'best_map', 'best_minp', 'checkpoint_rank1', 'checkpoint_map', 'final_rank1', 'final_rank5', 'final_rank10', 'final_rank20', 'final_map', 'final_minp', 'rank1', 'rank5', 'rank10', 'rank20', 'map', 'minp', 'model_r1', 'model_map', 'best_r1', 'sysu_all_rank1', 'sysu_all_map', 'sysu_indoor_rank1', 'sysu_indoor_map', 'regdb_v2t_rank1', 'regdb_v2t_map', 'regdb_t2v_rank1', 'regdb_t2v_map', 'mean_best_rank1', 'mean_best_map', 'max_best_rank1', 'max_best_map']);
     const deltaKeys = new Set(['delta_rank1', 'delta_map']);
 
