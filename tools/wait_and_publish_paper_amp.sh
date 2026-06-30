@@ -6,7 +6,7 @@ PYTHON="${PYTHON:-/mnt/conda/envs/regdb/bin/python}"
 TRAIN_LOG="${TRAIN_LOG:-logs/paper_amp_ablation.log}"
 PUBLISH_LOG="${PUBLISH_LOG:-logs/paper_amp_publish.log}"
 POLL_SECONDS="${POLL_SECONDS:-600}"
-TRIALS="${TRIALS:-1-10}"
+TRIALS="${TRIALS:-1-3}"
 AUTO_GIT="${AUTO_GIT:-1}"
 
 cd "$ROOT"
