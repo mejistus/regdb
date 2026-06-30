@@ -8,6 +8,13 @@ from .losses import CrossEntropyLabelSmooth, FocalTopLoss
 from IPython import embed
 
 
+def _autocast_disabled():
+    try:
+        return torch.amp.autocast("cuda", enabled=False)
+    except AttributeError:  # pragma: no cover - compatibility for older torch
+        return torch.cuda.amp.autocast(enabled=False)
+
+
 class CM(autograd.Function):
 
     @staticmethod
@@ -155,37 +162,40 @@ class ClusterMemory(nn.Module, ABC):
             raise TypeError('Cluster Memory {} is invalid!'.format(self.cm_type))
 
     def forward(self, inputs, targets, model_name='encoder'):
-        inputs = F.normalize(inputs, dim=1).cuda()
-        if self.cm_type == 'CM':
-            outputs = cm(inputs, targets, self.features, self.momentum)
-            outputs /= self.temp
-            loss = self.cross_entropy(outputs, targets)
-            return loss
+        # The custom memory autograd functions update float32 buffers in backward.
+        # Keep them outside AMP autocast while allowing the backbone to run in fp16.
+        with _autocast_disabled():
+            inputs = F.normalize(inputs.float(), dim=1).cuda()
+            if self.cm_type == 'CM':
+                outputs = cm(inputs, targets, self.features, self.momentum)
+                outputs /= self.temp
+                loss = self.cross_entropy(outputs, targets)
+                return loss
 
-        elif self.cm_type == 'CMhybrid':
-            outputs = cm_hybrid(inputs, targets, self.features, self.momentum)
-            outputs /= self.temp
-            mean, hard = torch.chunk(outputs, 2, dim=1)
-            r = 0.2
-            loss = 0.5 * (self.cross_entropy(hard, targets) + torch.relu(self.cross_entropy(mean, targets) - r))
-            return loss
-        
-        elif self.cm_type == 'CMhard':
-            if model_name == 'encoder':
+            elif self.cm_type == 'CMhybrid':
                 outputs = cm_hybrid(inputs, targets, self.features, self.momentum)
                 outputs /= self.temp
                 mean, hard = torch.chunk(outputs, 2, dim=1)
                 r = 0.2
-                loss1 = 0.5 * (self.cross_entropy(hard, targets) + torch.relu(self.cross_entropy(mean, targets) - r))
-                return loss1
-            elif model_name == 'encoder_ema':
-                outputs = cm_hard(inputs, targets, self.features_ema, self.momentum, self.num_instances)
-                outputs /= self.temp
-                out_list = torch.chunk(outputs, self.num_instances, dim=1)
-                out = torch.stack(out_list, dim=0)
-                neg = torch.max(out, dim=0)[0]
-                pos = torch.min(out, dim=0)[0]
-                mask = torch.zeros_like(out_list[0]).scatter_(1, targets.unsqueeze(1), 1)
-                mask_in = mask * pos + (1 - mask) * neg
-                loss2 = self.cross_entropy(mask_in, targets)
-                return loss2     
+                loss = 0.5 * (self.cross_entropy(hard, targets) + torch.relu(self.cross_entropy(mean, targets) - r))
+                return loss
+
+            elif self.cm_type == 'CMhard':
+                if model_name == 'encoder':
+                    outputs = cm_hybrid(inputs, targets, self.features, self.momentum)
+                    outputs /= self.temp
+                    mean, hard = torch.chunk(outputs, 2, dim=1)
+                    r = 0.2
+                    loss1 = 0.5 * (self.cross_entropy(hard, targets) + torch.relu(self.cross_entropy(mean, targets) - r))
+                    return loss1
+                elif model_name == 'encoder_ema':
+                    outputs = cm_hard(inputs, targets, self.features_ema, self.momentum, self.num_instances)
+                    outputs /= self.temp
+                    out_list = torch.chunk(outputs, self.num_instances, dim=1)
+                    out = torch.stack(out_list, dim=0)
+                    neg = torch.max(out, dim=0)[0]
+                    pos = torch.min(out, dim=0)[0]
+                    mask = torch.zeros_like(out_list[0]).scatter_(1, targets.unsqueeze(1), 1)
+                    mask_in = mask * pos + (1 - mask) * neg
+                    loss2 = self.cross_entropy(mask_in, targets)
+                    return loss2
