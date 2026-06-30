@@ -16,6 +16,8 @@ CONFIGS = [
     ("full_mdue", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue"),
     ("full_mdue_cgcf", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue_cgcf"),
 ]
+STAGE2_ONLY_CONFIGS = {"full_mdue_cgcf"}
+DEFAULT_EPOCHS = 50
 
 EPOCH_RE = re.compile(
     r"Finished epoch\s+(?P<epoch>\d+)\s+"
@@ -75,11 +77,43 @@ def collect(root: Path, trials: list[int]) -> list[dict[str, Any]]:
                     "trial": trial,
                 }
             )
-            if not row.get("done") and "epoch" not in row:
+            if config not in STAGE2_ONLY_CONFIGS and not row.get("done") and "epoch" not in row:
                 stage1_path = root / "logs" / stage1_folder / str(trial) / f"{trial}log.txt"
                 row["stage1"] = parse_log(stage1_path)
             rows.append(row)
     return rows
+
+
+def epoch_progress(log_row: dict[str, Any], epochs: int) -> int:
+    if log_row.get("done"):
+        return epochs
+    if "epoch" not in log_row:
+        return 0
+    return max(0, min(int(log_row["epoch"]) + 1, epochs))
+
+
+def row_progress(row: dict[str, Any], epochs: int = DEFAULT_EPOCHS) -> tuple[int, int]:
+    if row["config"] in STAGE2_ONLY_CONFIGS:
+        return epoch_progress(row, epochs), epochs
+    if "epoch" in row:
+        return epochs + epoch_progress(row, epochs), epochs * 2
+    return epoch_progress(row.get("stage1", {}), epochs), epochs * 2
+
+
+def print_progress(rows: list[dict[str, Any]]) -> None:
+    done = 0
+    total = 0
+    active: list[str] = []
+    for row in rows:
+        row_done, row_total = row_progress(row)
+        done += row_done
+        total += row_total
+        if 0 < row_done < row_total:
+            phase = "stage2" if "epoch" in row else "stage1"
+            active.append(f"{row['config']}/trial-{row['trial']}/{phase}")
+    percent = (100.0 * done / total) if total else 0.0
+    active_text = ", ".join(active) if active else "none"
+    print(f"overall_progress={done}/{total} epochs ({percent:.1f}%) active={active_text}")
 
 
 def print_table(rows: list[dict[str, Any]]) -> None:
@@ -116,6 +150,7 @@ def print_table(rows: list[dict[str, Any]]) -> None:
             f"mean_best={mean(row['best_rank1'] for row in complete):.2f}/"
             f"{mean(row['best_map'] for row in complete):.2f}"
         )
+    print_progress(rows)
 
 
 def main() -> None:
