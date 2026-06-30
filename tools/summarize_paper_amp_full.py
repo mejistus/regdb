@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import datetime, timedelta
 from pathlib import Path
 from statistics import mean
 from typing import Any
@@ -18,6 +19,7 @@ CONFIGS = [
 ]
 STAGE2_ONLY_CONFIGS = {"full_mdue_cgcf"}
 DEFAULT_EPOCHS = 50
+TRAIN_LOG = Path("logs/paper_amp_full_ablation.log")
 
 EPOCH_RE = re.compile(
     r"Finished epoch\s+(?P<epoch>\d+)\s+"
@@ -27,6 +29,7 @@ EPOCH_RE = re.compile(
     r"best mAP:\s*(?P<best_map>[0-9.]+)%"
     r"\(best_epoch:(?P<best_epoch>\d+)\)"
 )
+START_RE = re.compile(r"PAPER_AMP_FULL_ABLATION_START:(?P<timestamp>\S+)")
 
 
 def parse_trials(raw: str) -> list[int]:
@@ -100,7 +103,17 @@ def row_progress(row: dict[str, Any], epochs: int = DEFAULT_EPOCHS) -> tuple[int
     return epoch_progress(row.get("stage1", {}), epochs), epochs * 2
 
 
-def print_progress(rows: list[dict[str, Any]]) -> None:
+def active_phase(row: dict[str, Any], epochs: int = DEFAULT_EPOCHS) -> str:
+    if row["config"] in STAGE2_ONLY_CONFIGS:
+        return "stage2"
+    if "epoch" in row:
+        return "stage2"
+    if epoch_progress(row.get("stage1", {}), epochs) >= epochs:
+        return "stage2-pending"
+    return "stage1"
+
+
+def progress_counts(rows: list[dict[str, Any]]) -> tuple[int, int, list[str]]:
     done = 0
     total = 0
     active: list[str] = []
@@ -109,14 +122,62 @@ def print_progress(rows: list[dict[str, Any]]) -> None:
         done += row_done
         total += row_total
         if 0 < row_done < row_total:
-            phase = "stage2" if "epoch" in row else "stage1"
-            active.append(f"{row['config']}/trial-{row['trial']}/{phase}")
+            active.append(f"{row['config']}/trial-{row['trial']}/{active_phase(row)}")
+    return done, total, active
+
+
+def parse_start_time(path: Path) -> datetime | None:
+    if not path.exists():
+        return None
+    for line in path.read_text(errors="replace").splitlines():
+        match = START_RE.search(line)
+        if not match:
+            continue
+        try:
+            return datetime.fromisoformat(match.group("timestamp"))
+        except ValueError:
+            return None
+    return None
+
+
+def format_duration(delta: timedelta) -> str:
+    seconds = max(0, int(delta.total_seconds()))
+    days, rem = divmod(seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+    if days:
+        return f"{days}d{hours:02d}h{minutes:02d}m"
+    if hours:
+        return f"{hours}h{minutes:02d}m"
+    if minutes:
+        return f"{minutes}m{seconds:02d}s"
+    return f"{seconds}s"
+
+
+def print_progress(rows: list[dict[str, Any]], root: Path) -> None:
+    done, total, active = progress_counts(rows)
     percent = (100.0 * done / total) if total else 0.0
     active_text = ", ".join(active) if active else "none"
     print(f"overall_progress={done}/{total} epochs ({percent:.1f}%) active={active_text}")
 
+    start = parse_start_time(root / TRAIN_LOG)
+    if not start or done <= 0:
+        return
+    now = datetime.now(start.tzinfo)
+    elapsed = now - start
+    seconds_per_epoch = elapsed.total_seconds() / done
+    remaining = timedelta(seconds=seconds_per_epoch * max(total - done, 0))
+    finish = now + remaining
+    print(
+        "rough_eta="
+        f"elapsed={format_duration(elapsed)} "
+        f"avg_epoch={format_duration(timedelta(seconds=seconds_per_epoch))} "
+        f"remaining={format_duration(remaining)} "
+        f"finish={finish.isoformat(timespec='seconds')}"
+    )
 
-def print_table(rows: list[dict[str, Any]]) -> None:
+
+def print_table(rows: list[dict[str, Any]], root: Path) -> None:
     for row in rows:
         if "epoch" in row:
             print(
@@ -150,7 +211,7 @@ def print_table(rows: list[dict[str, Any]]) -> None:
             f"mean_best={mean(row['best_rank1'] for row in complete):.2f}/"
             f"{mean(row['best_map'] for row in complete):.2f}"
         )
-    print_progress(rows)
+    print_progress(rows, root)
 
 
 def main() -> None:
@@ -164,7 +225,7 @@ def main() -> None:
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
     else:
-        print_table(rows)
+        print_table(rows, args.root)
 
 
 if __name__ == "__main__":
