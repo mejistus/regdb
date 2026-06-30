@@ -12,9 +12,9 @@ from typing import Any
 
 
 CONFIGS = [
-    ("full_baseline", "regdb_s2_amp_full_baseline"),
-    ("full_mdue", "regdb_s2_amp_full_mdue"),
-    ("full_mdue_cgcf", "regdb_s2_amp_full_mdue_cgcf"),
+    ("full_baseline", "regdb_s1_amp_full_baseline", "regdb_s2_amp_full_baseline"),
+    ("full_mdue", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue"),
+    ("full_mdue_cgcf", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue_cgcf"),
 ]
 
 EPOCH_RE = re.compile(
@@ -62,11 +62,22 @@ def parse_log(path: Path) -> dict[str, Any]:
 
 def collect(root: Path, trials: list[int]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for config, folder in CONFIGS:
+    for config, stage1_folder, stage2_folder in CONFIGS:
         for trial in trials:
-            path = root / "logs" / folder / str(trial) / f"{trial}log.txt"
-            row = parse_log(path)
-            row.update({"config": config, "folder": folder, "trial": trial})
+            stage2_path = root / "logs" / stage2_folder / str(trial) / f"{trial}log.txt"
+            row = parse_log(stage2_path)
+            row.update(
+                {
+                    "config": config,
+                    "folder": stage2_folder,
+                    "stage1_folder": stage1_folder,
+                    "stage2_folder": stage2_folder,
+                    "trial": trial,
+                }
+            )
+            if not row.get("done") and "epoch" not in row:
+                stage1_path = root / "logs" / stage1_folder / str(trial) / f"{trial}log.txt"
+                row["stage1"] = parse_log(stage1_path)
             rows.append(row)
     return rows
 
@@ -75,16 +86,27 @@ def print_table(rows: list[dict[str, Any]]) -> None:
     for row in rows:
         if "epoch" in row:
             print(
-                "{config:16s} trial={trial}: epoch={epoch:>2d} "
+                "{config:16s} trial={trial}: stage2 epoch={epoch:>2d} "
                 "current={rank1:5.1f}/{map:5.1f} "
                 "best={best_rank1:5.1f}/{best_map:5.1f}@{best_epoch} "
                 "done={done}".format(**row)
             )
+        elif "epoch" in row.get("stage1", {}):
+            stage1 = row["stage1"]
+            print(
+                f"{row['config']:16s} trial={row['trial']}: "
+                f"stage1 epoch={stage1['epoch']:>2d} "
+                f"current={stage1['rank1']:5.1f}/{stage1['map']:5.1f} "
+                f"best={stage1['best_rank1']:5.1f}/{stage1['best_map']:5.1f}@{stage1['best_epoch']} "
+                f"stage2={row['status']}"
+            )
+        elif row.get("stage1", {}).get("status") == "started":
+            print(f"{row['config']:16s} trial={row['trial']}: stage1 started stage2={row['status']}")
         else:
             print(f"{row['config']:16s} trial={row['trial']}: {row['status']}")
 
     print("")
-    for config, _ in CONFIGS:
+    for config, _, _ in CONFIGS:
         complete = [row for row in rows if row["config"] == config and row.get("done")]
         if not complete:
             print(f"{config:16s} complete=0")
