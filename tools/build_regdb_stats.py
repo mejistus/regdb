@@ -120,6 +120,18 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "notes": "Stage2-only quick baseline, 3 RegDB splits.",
     },
     {
+        "experiment": "baseline_fp32_quick",
+        "label": "PCLHD quick baseline (FP32)",
+        "method": "PCLHD",
+        "folder": "regdb_s2_baseline_fp32_quick",
+        "mdue": False,
+        "cgcf": False,
+        "amp": False,
+        "mdue_samples": 1,
+        "dropout": 0.0,
+        "notes": "Same quick baseline as above, but without AMP, to isolate numeric precision effects.",
+    },
+    {
         "experiment": "mdue_quick",
         "label": "PCLHD + MDUE",
         "method": "PCLHD+MDUE",
