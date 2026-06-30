@@ -722,7 +722,7 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "Full reproduction uses RegDB trials 1-10. Ablation and paper-parameter checks use trials 1-3 unless otherwise noted. Training logs are visible-to-thermal.",
+            "split_policy": "This AMP fp16 reproduction report uses RegDB trials 1-3 for the paper-parameter baseline, MDUE, and MDUE+CGCF comparison unless otherwise noted. RegDB papers often average 10 official splits, so the 1-3 split result is treated as a trend check. Training logs are visible-to-thermal.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper tables, including venue/year columns. Reproduced AMP runs are reported in the ablation and paper-parameter tables.",
         },
@@ -1017,9 +1017,9 @@ def build_html(payload: dict[str, Any]) -> str:
           <p>评测时用一个模态作为查询，另一个模态作为图库，按特征距离检索同一身份。当前 RegDB 脚本记录的是 visible-to-thermal 方向。</p>
         </div>
         <div class="explain-block">
-          <h3>为什么有 10 个 trial</h3>
-          <p>RegDB 官方提供 10 组划分。每个 <code>trial</code> 都是一套不同的训练/测试拆分，论文复现实验通常报告 10 个 trial 的平均结果，以降低单次划分带来的偶然性。</p>
-          <p>因此完整复现不是只跑一次，而是 trial 1 到 10 都跑完。</p>
+          <h3>为什么有多个 trial</h3>
+          <p>RegDB 官方提供 10 组划分。每个 <code>trial</code> 都是一套不同的训练/测试拆分，论文通常报告 10 个 trial 的平均结果，以降低单次划分带来的偶然性。</p>
+          <p>本次 AMP fp16 复现按当前目标固定跑 trial 1-3，对比同环境下的 baseline、MDUE 和 MDUE+CGCF；最终表格会明确标出已完成 trial 数。</p>
         </div>
         <div class="explain-block">
           <h3>为什么有 stage1 和 stage2</h3>
@@ -1028,13 +1028,13 @@ def build_html(payload: dict[str, Any]) -> str:
         </div>
         <div class="explain-block">
           <h3>论文第 5 章创新点</h3>
-          <p><code>MDUE</code> 在特征抽取时保持 Dropout 随机性，多次前向估计样本表征方差，并把低方差样本赋予更高置信度。本次快速复现按论文设置 <code>S=3</code>、<code>p=0.10</code>。</p>
+          <p><code>MDUE</code> 在特征抽取时保持 Dropout 随机性，多次前向估计样本表征方差，并把低方差样本赋予更高置信度。本次 AMP fp16 复现按论文设置 <code>S=3</code>、<code>p=0.10</code>。</p>
           <p><code>CGCF</code> 在 All-memory 原型构造时，不再简单平均 RGB/IR 中心，而是用模态置信度和跨模态一致性加权融合簇中心。</p>
         </div>
         <div class="explain-block">
           <h3>本次复现设置</h3>
-          <p>环境使用 Python 3.12、PyTorch 2.6.0、单张 Tesla V100 16GB。由于 batch 64 在后续 trial 出现显存边缘 OOM，剩余 trial 已改为 batch 32 续跑；表格中的 <code>Batch</code> 列会记录每个 run 的实际 batch size。</p>
-          <p>完整复现保留 10 split 结果；论文创新点复现实验只跑 trial 1-3 的快速消融，并用 <code>AMP fp16</code> 加速训练。</p>
+          <p>环境使用 Python 3.12、PyTorch 2.6.0、单张 Tesla V100 16GB 和 <code>AMP fp16</code>。正式 AMP 组保持论文训练长度与聚类参数；stage1 使用 batch 64，stage2 使用 batch 32 以适配显存，表格中的 <code>Batch</code> 列会记录每个 run 的实际 batch size。</p>
+          <p>当前报告的主结论只比较同一 AMP fp16 环境下的 PCLHD baseline、PCLHD+MDUE 和 PCLHD+MDUE+CGCF，默认范围是 RegDB trial 1-3。</p>
         </div>
       </div>
     </section>
@@ -1124,7 +1124,7 @@ def build_html(payload: dict[str, Any]) -> str:
     </section>
     <section class="panel">
       <h2>AMP vs FP32 Baseline Check</h2>
-      <p>这里只比较同一套 3 split quick baseline：<code>baseline_quick</code> 使用 AMP，<code>baseline_fp32_quick</code> 关闭 AMP。它用于隔离“混合精度是否导致指标差异”，不等价于论文正式 10 split 结果。</p>
+      <p>这里只比较同一套 3 split quick baseline：<code>baseline_quick</code> 使用 AMP，<code>baseline_fp32_quick</code> 关闭 AMP。它用于隔离“混合精度是否导致指标差异”，不作为本次主结论依据。</p>
       <div class="precision-grid" id="precisionSummary"></div>
     </section>
     <section class="panel">
@@ -1134,7 +1134,7 @@ def build_html(payload: dict[str, Any]) -> str:
         <label>Search<input id="quickSearchInput" type="search" placeholder="method, config, status, folder"></label>
         <button id="clearQuickFilters" type="button">Clear</button>
       </div>
-      <p class="muted">这里汇总 quick 消融、修复版 MDUE smoke，以及按论文参数启动的 AMP 组。默认使用 RegDB trial 1-3 判断趋势；不等价于论文正式 10 split 均值。</p>
+      <p class="muted">这里汇总 quick 消融、修复版 MDUE smoke，以及按论文参数启动的 AMP 组。默认使用 RegDB trial 1-3 判断 baseline、MDUE 和 CGCF 的相对趋势。</p>
       <div class="table-wrap">
         <table id="quickAblationTable">
           <thead>
@@ -1187,7 +1187,7 @@ def build_html(payload: dict[str, Any]) -> str:
     <section class="panel">
       <h2>术语解释</h2>
       <dl class="term-list">
-        <dt>run</dt><dd>一次具体训练任务。完整 RegDB 复现包含 10 个 trial，每个 trial 有 stage1 和 stage2，所以一共 20 个 run。</dd>
+        <dt>run</dt><dd>一次具体训练任务。本次主实验包含 3 个方法配置和 3 个 RegDB trial；每个 trial 有 stage1 和 stage2，所以期望看到 18 个 stage-level run。</dd>
         <dt>epoch</dt><dd>完整遍历一次当前训练采样流程后的评估点。本报告逐 epoch 记录 Rank 和 mAP，便于观察训练走势。</dd>
         <dt>checkpoint</dt><dd>训练过程中保存的最佳模型权重。本报告的 Ckpt 字段对应日志里记录的 best epoch。</dd>
         <dt>Rank-1 / R1</dt><dd>查询图像检索结果的第一名就是正确身份的比例。越高越好，是行人重识别最直观的指标。</dd>
