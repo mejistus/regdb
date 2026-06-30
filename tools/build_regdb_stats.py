@@ -504,9 +504,15 @@ def build_precision_summary(quick_aggregate_rows: list[dict[str, Any]]) -> dict[
     elif abs(delta_r1 or 0.0) <= 0.5 and abs(delta_map or 0.0) <= 0.5:
         status = "precision_unlikely"
         conclusion = "FP32 and AMP quick baselines are within 0.5 percentage points; numeric precision is unlikely to be the main source of the paper gap."
+    elif (delta_r1 or 0.0) > 0 and (delta_map or 0.0) > 0:
+        status = "fp32_slightly_higher"
+        conclusion = "FP32 is higher than AMP on this quick baseline, so mixed precision has a measurable small effect, but it does not explain the remaining gap to the paper setting."
+    elif (delta_r1 or 0.0) < 0 and (delta_map or 0.0) < 0:
+        status = "fp32_lower"
+        conclusion = "FP32 is lower than AMP on this quick baseline; numeric precision is not the reason the reproduction lags the paper."
     else:
         status = "precision_difference"
-        conclusion = "FP32 and AMP quick baselines differ by more than 0.5 percentage points; inspect the FP32 runs before ruling out numeric precision."
+        conclusion = "FP32 and AMP quick baselines differ by more than 0.5 percentage points with mixed metric signs; inspect individual trials before ruling out numeric precision."
 
     return {
         "status": status,
