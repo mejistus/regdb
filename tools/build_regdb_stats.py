@@ -116,6 +116,7 @@ COMPARISON_ROWS: list[dict[str, Any]] = [
 
 
 QUICK_TRIALS = [1, 2, 3]
+PRIMARY_REPORT_GROUP = "paper_amp_full"
 QUICK_EXPERIMENTS: list[dict[str, Any]] = [
     {
         "experiment": "baseline_quick",
@@ -671,6 +672,10 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
     ]
     stage2_best_r1 = finite_values(stage2_complete, "best_rank1")
     stage2_best_map = finite_values(stage2_complete, "best_map")
+    primary_full_rows = [row for row in quick_rows if row.get("group") == PRIMARY_REPORT_GROUP]
+    primary_full_configs = [
+        row for row in quick_aggregate_rows if row.get("group") == PRIMARY_REPORT_GROUP
+    ]
     expected_run_count = len(trials) * 2
     validation = {
         "expected_trials": trials,
@@ -689,6 +694,10 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         "quick_complete_run_count": sum(1 for row in quick_rows if row["complete"]),
         "quick_expected_config_count": len(quick_aggregate_rows),
         "quick_complete_config_count": sum(1 for row in quick_aggregate_rows if row["complete"]),
+        "primary_full_expected_run_count": len(primary_full_rows),
+        "primary_full_complete_run_count": sum(1 for row in primary_full_rows if row["complete"]),
+        "primary_full_expected_config_count": len(primary_full_configs),
+        "primary_full_complete_config_count": sum(1 for row in primary_full_configs if row["complete"]),
         "precision_check_status": precision_summary["status"],
         "precision_check_complete": precision_summary["complete"],
         "precision_delta_rank1": precision_summary["delta_rank1"],
@@ -699,6 +708,12 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
         and not missing_logs
         and not incomplete_runs
     )
+    validation["primary_full_ok"] = (
+        validation["primary_full_expected_run_count"] > 0
+        and validation["primary_full_complete_run_count"] == validation["primary_full_expected_run_count"]
+        and validation["primary_full_complete_config_count"] == validation["primary_full_expected_config_count"]
+    )
+    validation["report_ok"] = validation["primary_full_ok"] or validation["ok"]
     return {
         "manifest": {
             "script": "tools/build_regdb_stats.py",
@@ -723,7 +738,7 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
 def build_html(payload: dict[str, Any]) -> str:
     data_json = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     validation = payload["validation"]
-    status_text = "complete" if validation["ok"] else "incomplete"
+    status_text = "complete" if validation["report_ok"] else "incomplete"
     generated_at = html.escape(payload["manifest"]["generated_at"])
     return f"""<!doctype html>
 <html lang="en">
@@ -1464,13 +1479,17 @@ def build_html(payload: dict[str, Any]) -> str:
       const validation = DATA.validation;
       const completeRuns = validation.complete_run_count;
       const expectedRuns = validation.expected_run_count;
+      const primaryComplete = validation.primary_full_complete_run_count;
+      const primaryExpected = validation.primary_full_expected_run_count;
       const quickComplete = validation.quick_complete_run_count;
       const quickExpected = validation.quick_expected_run_count;
       const maxR1 = validation.stage2_best_rank1_max;
       const meanR1 = validation.stage2_best_rank1_mean;
       const meanMap = validation.stage2_best_map_mean;
       const cards = [
-        ['Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.ok ? 'all expected logs complete' : 'missing or incomplete logs remain'],
+        ['Report Status', validation.report_ok ? 'complete' : 'incomplete', validation.primary_full_ok ? 'full AMP runs complete' : 'waiting for full AMP runs'],
+        ['Full AMP Runs', `${{primaryComplete}} / ${{primaryExpected}}`, 'paper-parameter baseline, MDUE, and MDUE+CGCF'],
+        ['Legacy Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.ok ? 'all expected legacy logs complete' : 'legacy logs may be missing'],
         ['Stage2 Best R1', maxR1 === null ? '' : fmtPercent(maxR1), 'max over completed stage2 trials'],
         ['Stage2 Mean R1', meanR1 === null ? '' : fmtPercent(meanR1), `${{validation.complete_stage2_count}} completed stage2 trials`],
         ['Stage2 Mean mAP', meanMap === null ? '' : fmtPercent(meanMap), 'mean max mAP over completed stage2 trials'],
@@ -1485,7 +1504,10 @@ def build_html(payload: dict[str, Any]) -> str:
       const incomplete = validation.incomplete_runs.length ? validation.incomplete_runs.join(', ') : 'none';
       const manifest = DATA.manifest;
       document.getElementById('validation').innerHTML = [
-        `<div><strong>Status:</strong> ${{validation.ok ? 'complete' : 'incomplete'}}</div>`,
+        `<div><strong>Report status:</strong> ${{validation.report_ok ? 'complete' : 'incomplete'}}</div>`,
+        `<div><strong>Primary full AMP runs:</strong> ${{validation.primary_full_complete_run_count}} / ${{validation.primary_full_expected_run_count}}</div>`,
+        `<div><strong>Primary full AMP configs:</strong> ${{validation.primary_full_complete_config_count}} / ${{validation.primary_full_expected_config_count}}</div>`,
+        `<div><strong>Legacy status:</strong> ${{validation.ok ? 'complete' : 'incomplete'}}</div>`,
         `<div><strong>Summary rows:</strong> ${{validation.actual_run_count}} / ${{validation.expected_run_count}}</div>`,
         `<div><strong>Epoch rows:</strong> ${{validation.epoch_row_count}}</div>`,
         `<div><strong>Quick ablation runs:</strong> ${{validation.quick_complete_run_count}} / ${{validation.quick_expected_run_count}}</div>`,
@@ -1601,11 +1623,15 @@ def main() -> None:
     output.write_text(build_html(payload), encoding="utf-8")
     print(f"wrote {output}")
     print(
-        "complete_runs={complete}/{expected} epoch_rows={epochs} ok={ok}".format(
+        "complete_runs={complete}/{expected} primary_full={primary_complete}/{primary_expected} "
+        "epoch_rows={epochs} report_ok={report_ok} legacy_ok={legacy_ok}".format(
             complete=payload["validation"]["complete_run_count"],
             expected=payload["validation"]["expected_run_count"],
+            primary_complete=payload["validation"]["primary_full_complete_run_count"],
+            primary_expected=payload["validation"]["primary_full_expected_run_count"],
             epochs=payload["validation"]["epoch_row_count"],
-            ok=payload["validation"]["ok"],
+            report_ok=payload["validation"]["report_ok"],
+            legacy_ok=payload["validation"]["ok"],
         )
     )
 
