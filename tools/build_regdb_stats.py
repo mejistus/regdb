@@ -890,6 +890,20 @@ def build_html(payload: dict[str, Any]) -> str:
       color: var(--muted);
       font-size: 13px;
     }}
+    .audit-list {{
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 8px 12px;
+      margin: 12px 0 0;
+    }}
+    .audit-list dt {{
+      color: var(--ink);
+      font-weight: 720;
+    }}
+    .audit-list dd {{
+      margin: 0;
+      color: var(--muted);
+    }}
     .caption-title {{
       margin: 4px 0 0;
       color: var(--ink);
@@ -1035,6 +1049,24 @@ def build_html(payload: dict[str, Any]) -> str:
         <li><strong>6. Stage2 跨模态关联</strong><span>加载 stage1 checkpoint，构造 RGB、IR、All 三组 memory，通过跨模态相似度和二分图匹配建立 RGB-IR 原型对应关系。</span></li>
         <li><strong>7. 评估与汇总</strong><span>用最终 stage2 checkpoint 做 visible-to-thermal 与 thermal-to-visible 检索，汇总 Rank-1、mAP、mINP 和逐 trial 均值。</span></li>
       </ol>
+    </section>
+    <section class="panel">
+      <h2>实现审计与参数对齐</h2>
+      <p>这部分记录当前复现代码和论文方法的对应关系，便于解释“代码里是否真的包含 MDUE/CGCF”。</p>
+      <dl class="audit-list">
+        <dt>原始代码状态</dt>
+        <dd>初始提交 <code>d9145c9</code> 中已有 <code>extract_features(..., mc_drop)</code> 和 <code>confidence_fusion_features()</code> 这类辅助函数雏形，但 <code>train_regdb.py</code> 没有暴露 <code>--mdue-samples</code>、<code>--use-cgcf</code>，也没有把它们接入 RegDB stage1/stage2 训练路径。</dd>
+        <dt>本次接入</dt>
+        <dd>当前版本在 <code>train_regdb.py</code> 中加入 MDUE/CGCF 开关：stage1 与 stage2 的聚类特征抽取使用 <code>S=3</code> 的 MC-Dropout 均值特征；stage2 的 All-memory 原型在开启 CGCF 时调用置信度引导的跨模态中心融合。</dd>
+        <dt>Dropout 修正</dt>
+        <dd><code>clustercontrast/models/agw.py</code> 使用 <code>mc_dropout_active</code> 控制 Dropout，仅在不确定性采样阶段激活；普通评估和 baseline 不受随机 Dropout 干扰。</dd>
+        <dt>论文参数</dt>
+        <dd>full AMP 组保持 <code>epochs=50</code>、<code>iters=100</code>、<code>eps=0.3</code>、<code>momentum=0.1</code>、<code>num_instances=16</code>；baseline 使用 <code>S=1</code>、<code>dropout=0</code>、不开 CGCF，MDUE/CGCF 组使用 <code>S=3</code>、<code>dropout=0.10</code>。</dd>
+        <dt>环境差异</dt>
+        <dd>允许差异集中在 Python 3.12、PyTorch 2.6.0、V100 16GB 和 AMP fp16。stage2 使用较小 batch 以适配显存，实际值在表格中记录。</dd>
+        <dt>公式注意</dt>
+        <dd>当前 CGCF 按论文公式同时用跨模态一致性 <code>s_vr</code> 乘到 RGB/IR 两侧权重；两侧共同归一化时，差异性权重主要来自 <code>c_rgb</code> 与 <code>c_ir</code>，这会影响后续解释 CGCF 增益的幅度。</dd>
+      </dl>
     </section>
     <section class="panel">
       <h2>对比实验表格</h2>
