@@ -20,10 +20,12 @@ def fliplr(img):
     return img_flip
 
 
-def _enable_dropout(model):
-    """Enable dropout layers during evaluation for MC Dropout."""
+def _set_mc_dropout(model, enabled):
+    """Toggle MC-Dropout layers during evaluation."""
     for m in model.modules():
-        if isinstance(m, torch.nn.Dropout):
+        if hasattr(m, "mc_dropout_active"):
+            m.mc_dropout_active = enabled
+        elif enabled and isinstance(m, torch.nn.Dropout):
             m.train()
 
 def extract_cnn_feature(model, inputs,mode):
@@ -35,11 +37,11 @@ def extract_cnn_feature(model, inputs,mode):
     return outputs
 
 
-def _variance_to_confidence(variance, eps=1e-8):
-    """Convert MC Dropout variance to confidence. Higher variance -> lower confidence."""
-    # c = 1 / (1 + var), range (0, 1]
-    var_scalar = variance.mean(dim=-1).clamp(min=eps)
-    return (1.0 / (1.0 + var_scalar)).detach()
+def _uncertainty_to_confidence(uncertainty, eps=1e-8):
+    """Convert MC-Dropout uncertainty to confidence. Higher uncertainty -> lower confidence."""
+    # c = 1 / (1 + u), range (0, 1]
+    uncertainty = uncertainty.clamp(min=eps)
+    return (1.0 / (1.0 + uncertainty)).detach()
 
 
 def extract_features(model, data_loader, print_freq=50, flip=True, mode=0, mc_drop=1):
@@ -51,62 +53,68 @@ def extract_features(model, data_loader, print_freq=50, flip=True, mode=0, mc_dr
         confidences: OrderedDict fname -> scalar confidence in (0,1], or None if mc_drop<=1
     """
     model.eval()
-    if mc_drop is not None and mc_drop > 1:
-        _enable_dropout(model)
+    use_mc_dropout = mc_drop is not None and mc_drop > 1
+    if use_mc_dropout:
+        _set_mc_dropout(model, True)
     batch_time = AverageMeter()
     data_time = AverageMeter()
 
     features = OrderedDict()
     labels = OrderedDict()
-    confidences = OrderedDict() if (mc_drop is not None and mc_drop > 1) else None
+    confidences = OrderedDict() if use_mc_dropout else None
 
     end = time.time()
-    with torch.no_grad():
-        for i, (imgs, fnames, pids, _, _) in enumerate(data_loader):
-            data_time.update(time.time() - end)
+    try:
+        with torch.no_grad():
+            for i, (imgs, fnames, pids, _, _) in enumerate(data_loader):
+                data_time.update(time.time() - end)
 
-            if mc_drop is not None and mc_drop > 1:
-                mc_outputs = []
-                mc_outputs_flip = []
-                flip_imgs = fliplr(imgs)
-                for _ in range(mc_drop):
-                    out = extract_cnn_feature(model, imgs, mode)
-                    out_flip = extract_cnn_feature(model, flip_imgs, mode)
-                    mc_outputs.append(out)
-                    mc_outputs_flip.append(out_flip)
-                stacked = torch.stack(mc_outputs, dim=0)
-                stacked_flip = torch.stack(mc_outputs_flip, dim=0)
-                feat_combined = (stacked + stacked_flip) / 2.0  # [mc_drop, B, D]
-                outputs = feat_combined.mean(0)
-                variance = feat_combined.var(0)
-                conf_batch = _variance_to_confidence(variance)
-            else:
-                outputs = extract_cnn_feature(model, imgs, mode)
-                flip_imgs = fliplr(imgs)
-                outputs_flip = extract_cnn_feature(model, flip_imgs, mode)
-                conf_batch = None
-
-            for idx, (fname, pid) in enumerate(zip(fnames, pids)):
-                if conf_batch is None:
-                    feat = (outputs[idx].detach() + outputs_flip[idx].detach()) / 2.0
+                if use_mc_dropout:
+                    mc_outputs = []
+                    mc_outputs_flip = []
+                    flip_imgs = fliplr(imgs)
+                    for _ in range(mc_drop):
+                        out = extract_cnn_feature(model, imgs, mode)
+                        out_flip = extract_cnn_feature(model, flip_imgs, mode)
+                        mc_outputs.append(out)
+                        mc_outputs_flip.append(out_flip)
+                    stacked = torch.stack(mc_outputs, dim=0)
+                    stacked_flip = torch.stack(mc_outputs_flip, dim=0)
+                    feat_combined = (stacked + stacked_flip) / 2.0  # [mc_drop, B, D]
+                    outputs = feat_combined.mean(0)
+                    uncertainty = (feat_combined - outputs.unsqueeze(0)).pow(2).sum(dim=-1).mean(dim=0)
+                    conf_batch = _uncertainty_to_confidence(uncertainty)
                 else:
-                    feat = outputs[idx].detach()
-                features[fname] = feat
-                labels[fname] = pid
-                if confidences is not None and conf_batch is not None:
-                    c = conf_batch[idx]
-                    confidences[fname] = c.item() if isinstance(c, torch.Tensor) else c
+                    outputs = extract_cnn_feature(model, imgs, mode)
+                    flip_imgs = fliplr(imgs)
+                    outputs_flip = extract_cnn_feature(model, flip_imgs, mode)
+                    conf_batch = None
 
-            batch_time.update(time.time() - end)
-            end = time.time()
+                for idx, (fname, pid) in enumerate(zip(fnames, pids)):
+                    if conf_batch is None:
+                        feat = (outputs[idx].detach() + outputs_flip[idx].detach()) / 2.0
+                    else:
+                        feat = outputs[idx].detach()
+                    features[fname] = feat
+                    labels[fname] = pid
+                    if confidences is not None and conf_batch is not None:
+                        c = conf_batch[idx]
+                        confidences[fname] = c.item() if isinstance(c, torch.Tensor) else c
 
-            if (i + 1) % print_freq == 0:
-                print('Extract Features: [{}/{}]\t'
-                      'Time {:.3f} ({:.3f})\t'
-                      'Data {:.3f} ({:.3f})\t'
-                      .format(i + 1, len(data_loader),
-                              batch_time.val, batch_time.avg,
-                              data_time.val, data_time.avg))
+                batch_time.update(time.time() - end)
+                end = time.time()
+
+                if (i + 1) % print_freq == 0:
+                    print('Extract Features: [{}/{}]\t'
+                          'Time {:.3f} ({:.3f})\t'
+                          'Data {:.3f} ({:.3f})\t'
+                          .format(i + 1, len(data_loader),
+                                  batch_time.val, batch_time.avg,
+                                  data_time.val, data_time.avg))
+    finally:
+        if use_mc_dropout:
+            _set_mc_dropout(model, False)
+            model.eval()
 
     return features, labels, confidences
 

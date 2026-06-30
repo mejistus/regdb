@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import init
 from .resnet_agw import resnet50 as resnet50_agw
 
@@ -172,9 +173,8 @@ class embed_net_ori(nn.Module):
         self.l2norm = Normalize(2)
         self.bottleneck = nn.BatchNorm1d(pool_dim)
         self.bottleneck.bias.requires_grad_(False)  # no shift
-        self.dropout = dropout
-        if self.dropout > 0:
-            self.drop = nn.Dropout(self.dropout)
+        self.dropout = float(dropout)
+        self.mc_dropout_active = False
 
         self.classifier = nn.Linear(pool_dim, num_classes, bias=False)
 
@@ -245,8 +245,8 @@ class embed_net_ori(nn.Module):
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
         feat = self.bottleneck(x_pool)
-        if self.dropout > 0:
-            feat = self.drop(feat)
+        if self.dropout > 0 and self.mc_dropout_active:
+            feat = F.dropout(feat, p=self.dropout, training=True)
 
 
         if self.training:
