@@ -7,7 +7,7 @@ DATA_DIR="${DATA_DIR:-/mnt/datasets/RegDB}"
 LOGS_DIR="${LOGS_DIR:-logs}"
 GPU="${CUDA_VISIBLE_DEVICES:-0}"
 
-TRIALS="${TRIALS:-1 2 3}"
+TRIALS="${TRIALS:-1 2 3 4 5 6 7 8 9 10}"
 EPOCHS="${EPOCHS:-50}"
 ITERS="${ITERS:-100}"
 BATCH_SIZE="${BATCH_SIZE:-64}"
@@ -21,7 +21,7 @@ GPU_MAX_UTIL="${GPU_MAX_UTIL:-20}"
 POLL_SECONDS="${POLL_SECONDS:-300}"
 MIN_FREE_GB="${MIN_FREE_GB:-50}"
 ARCHIVE_DIR="${ARCHIVE_DIR:-/datasets/regdb}"
-LOG_FILE="${LOG_FILE:-logs/paper_amp_full_ablation.log}"
+LOG_FILE="${LOG_FILE:-logs/paper_amp10_ablation.log}"
 
 cd "$ROOT"
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -168,8 +168,8 @@ run_stage2_config() {
 
 ensure_space
 
-run_full_config "regdb_s1_amp_full_baseline" "regdb_s2_amp_full_baseline" "PCLHD AMP full baseline" 1 0.0 0
-run_full_config "regdb_s1_amp_full_mdue" "regdb_s2_amp_full_mdue" "PCLHD + MDUE AMP full" 3 0.10 0
-run_stage2_config "regdb_s1_amp_full_mdue" "regdb_s2_amp_full_mdue_cgcf" "PCLHD + MDUE + CGCF AMP full" 3 0.10 1
+run_full_config "regdb_s1_amp10_baseline" "regdb_s2_amp10_baseline" "PCLHD AMP baseline" 1 0.0 0
+run_full_config "regdb_s1_amp10_mdue" "regdb_s2_amp10_mdue" "PCLHD + MDUE AMP ablation" 3 0.10 0
+run_stage2_config "regdb_s1_amp10_mdue" "regdb_s2_amp10_mdue_cgcf" "PCLHD + MDUE + CGCF AMP ours" 3 0.10 1
 
 echo "PAPER_AMP_FULL_ABLATION_DONE:$(date -Is)"

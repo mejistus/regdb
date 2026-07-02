@@ -13,13 +13,13 @@ from typing import Any
 
 
 CONFIGS = [
-    ("full_baseline", "regdb_s1_amp_full_baseline", "regdb_s2_amp_full_baseline"),
-    ("full_mdue", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue"),
-    ("full_mdue_cgcf", "regdb_s1_amp_full_mdue", "regdb_s2_amp_full_mdue_cgcf"),
+    ("amp10_baseline", "regdb_s1_amp10_baseline", "regdb_s2_amp10_baseline"),
+    ("amp10_mdue", "regdb_s1_amp10_mdue", "regdb_s2_amp10_mdue"),
+    ("amp10_mdue_cgcf", "regdb_s1_amp10_mdue", "regdb_s2_amp10_mdue_cgcf"),
 ]
-STAGE2_ONLY_CONFIGS = {"full_mdue_cgcf"}
+STAGE2_ONLY_CONFIGS = {"amp10_mdue_cgcf"}
 DEFAULT_EPOCHS = 50
-TRAIN_LOG = Path("logs/paper_amp_full_ablation.log")
+TRAIN_LOG = Path("logs/paper_amp10_ablation.log")
 
 EPOCH_RE = re.compile(
     r"Finished epoch\s+(?P<epoch>\d+)\s+"
@@ -217,7 +217,7 @@ def print_table(rows: list[dict[str, Any]], root: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
-    parser.add_argument("--trials", default="1-3")
+    parser.add_argument("--trials", default="1-10")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 

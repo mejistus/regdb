@@ -116,7 +116,8 @@ COMPARISON_ROWS: list[dict[str, Any]] = [
 
 
 QUICK_TRIALS = [1, 2, 3]
-PRIMARY_REPORT_GROUP = "paper_amp_full"
+REGDB_OFFICIAL_TRIALS = list(range(1, 11))
+PRIMARY_REPORT_GROUP = "paper_amp10"
 QUICK_EXPERIMENTS: list[dict[str, Any]] = [
     {
         "experiment": "baseline_quick",
@@ -285,6 +286,51 @@ QUICK_EXPERIMENTS: list[dict[str, Any]] = [
         "mdue_samples": 3,
         "dropout": 0.1,
         "notes": "Full AMP setting: reuse the MDUE stage1 checkpoint and enable CGCF during stage2 prototype fusion.",
+    },
+    {
+        "experiment": "paper_amp10_baseline",
+        "label": "PCLHD AMP baseline (RegDB 10 trials)",
+        "method": "PCLHD",
+        "folder": "regdb_s2_amp10_baseline",
+        "group": "paper_amp10",
+        "baseline_experiment": "paper_amp10_baseline",
+        "mdue": False,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 1,
+        "dropout": 0.0,
+        "trials": REGDB_OFFICIAL_TRIALS,
+        "notes": "Official RegDB 10-trial AMP baseline. This is the baseline for all 10-trial deltas.",
+    },
+    {
+        "experiment": "paper_amp10_mdue",
+        "label": "PCLHD + MDUE AMP ablation (RegDB 10 trials)",
+        "method": "PCLHD+MDUE",
+        "folder": "regdb_s2_amp10_mdue",
+        "group": "paper_amp10",
+        "baseline_experiment": "paper_amp10_baseline",
+        "mdue": True,
+        "cgcf": False,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "trials": REGDB_OFFICIAL_TRIALS,
+        "notes": "MDUE module ablation against the PCLHD AMP baseline on the official RegDB 10 trials.",
+    },
+    {
+        "experiment": "paper_amp10_mdue_cgcf",
+        "label": "PCLHD + MDUE + CGCF AMP ours (RegDB 10 trials)",
+        "method": "PCLHD+MDUE+CGCF",
+        "folder": "regdb_s2_amp10_mdue_cgcf",
+        "group": "paper_amp10",
+        "baseline_experiment": "paper_amp10_baseline",
+        "mdue": True,
+        "cgcf": True,
+        "amp": True,
+        "mdue_samples": 3,
+        "dropout": 0.1,
+        "trials": REGDB_OFFICIAL_TRIALS,
+        "notes": "Our full method: PCLHD AMP baseline plus the proposed MDUE and CGCF modules, evaluated on all 10 official RegDB trials.",
     },
 ]
 
@@ -502,7 +548,8 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
 
     for config in QUICK_EXPERIMENTS:
         complete_rows: list[dict[str, Any]] = []
-        for trial in QUICK_TRIALS:
+        config_trials = config.get("trials", QUICK_TRIALS)
+        for trial in config_trials:
             log_path = log_root / config["folder"] / str(trial) / f"{trial}log.txt"
             summary, _ = parse_log(log_path, trial, "quick_stage2")
             row = dict(summary)
@@ -527,7 +574,7 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
         best_r1 = finite_values(complete_rows, "best_rank1")
         best_map = finite_values(complete_rows, "best_map")
         complete_trials = len(complete_rows)
-        expected_trials = len(QUICK_TRIALS)
+        expected_trials = len(config_trials)
         if complete_trials == expected_trials:
             status = "complete"
         elif complete_trials == 0:
@@ -547,7 +594,7 @@ def collect_quick_ablations(log_root: Path) -> tuple[list[dict[str, Any]], list[
                 "amp": config["amp"],
                 "mdue_samples": config["mdue_samples"],
                 "dropout": config["dropout"],
-                "trials": ",".join(str(trial) for trial in QUICK_TRIALS),
+                "trials": ",".join(str(trial) for trial in config_trials),
                 "expected_trials": expected_trials,
                 "complete_trials": complete_trials,
                 "status": status,
@@ -603,7 +650,7 @@ def build_precision_summary(quick_aggregate_rows: list[dict[str, Any]]) -> dict[
         if isinstance(fp32_map, (int, float)) and isinstance(amp_map, (int, float))
         else None
     )
-    expected_trials = len(QUICK_TRIALS)
+    expected_trials = int(amp_baseline.get("expected_trials", len(QUICK_TRIALS))) if amp_baseline else len(QUICK_TRIALS)
     amp_complete = amp_baseline.get("complete_trials", 0) if amp_baseline else 0
     fp32_complete = fp32_baseline.get("complete_trials", 0) if fp32_baseline else 0
     complete = bool(
@@ -722,9 +769,9 @@ def collect(root: Path, log_root: Path, trials: list[int]) -> dict[str, Any]:
             "log_root": str(log_root),
             "output": "htmls/stats.html",
             "metric_policy": "Rank and mAP values are parsed from FC evaluation lines; best Rank-1 and max mAP are computed independently. Checkpoint fields use the logged best epoch.",
-            "split_policy": "This AMP fp16 reproduction report uses RegDB trials 1-3 for the paper-parameter baseline, MDUE, and MDUE+CGCF comparison unless otherwise noted. RegDB papers often average 10 official splits, so the 1-3 split result is treated as a trend check. Training logs are visible-to-thermal.",
+            "split_policy": "The primary AMP reproduction uses all 10 official RegDB trials for PCLHD AMP baseline, PCLHD+MDUE, and PCLHD+MDUE+CGCF. SYSU-MM01 and RegDB literature values are shown in separate paper tables because their protocols and absolute performance are not directly comparable.",
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper tables, including venue/year columns. Reproduced AMP runs are reported in the ablation and paper-parameter tables.",
+            "comparison_source": "Literature rows are transcribed from the NeurIPS 2024 PCLHD paper tables, including venue/year columns. Reproduced AMP runs are reported in the ablation table; the primary reproduced group is paper_amp10.",
         },
         "summary_rows": summary_rows,
         "epoch_rows": epoch_rows,
@@ -1019,7 +1066,7 @@ def build_html(payload: dict[str, Any]) -> str:
         <div class="explain-block">
           <h3>为什么有多个 trial</h3>
           <p>RegDB 官方提供 10 组划分。每个 <code>trial</code> 都是一套不同的训练/测试拆分，论文通常报告 10 个 trial 的平均结果，以降低单次划分带来的偶然性。</p>
-          <p>本次 AMP fp16 复现按当前目标固定跑 trial 1-3，对比同环境下的 baseline、MDUE 和 MDUE+CGCF；最终表格会明确标出已完成 trial 数。</p>
+          <p>本次 AMP fp16 复现按当前目标重新跑 RegDB 官方 trial 1-10。baseline 固定为 <code>PCLHD AMP baseline</code>，我们的完整方法是 <code>PCLHD+MDUE+CGCF</code>，<code>MDUE</code> 与 <code>CGCF</code> 作为两个提出模块做消融。</p>
         </div>
         <div class="explain-block">
           <h3>为什么有 stage1 和 stage2</h3>
@@ -1034,7 +1081,7 @@ def build_html(payload: dict[str, Any]) -> str:
         <div class="explain-block">
           <h3>本次复现设置</h3>
           <p>环境使用 Python 3.12、PyTorch 2.6.0、单张 Tesla V100 16GB 和 <code>AMP fp16</code>。正式 AMP 组保持论文训练长度与聚类参数；stage1 使用 batch 64，stage2 使用 batch 32 以适配显存，表格中的 <code>Batch</code> 列会记录每个 run 的实际 batch size。</p>
-          <p>当前报告的主结论只比较同一 AMP fp16 环境下的 PCLHD baseline、PCLHD+MDUE 和 PCLHD+MDUE+CGCF，默认范围是 RegDB trial 1-3。</p>
+          <p>当前报告的主结论只比较同一 AMP fp16 环境下的 <code>PCLHD AMP baseline</code>、<code>PCLHD+MDUE</code> 和我们的 <code>PCLHD+MDUE+CGCF</code>，默认范围是 RegDB trial 1-10。</p>
         </div>
       </div>
     </section>
@@ -1042,7 +1089,7 @@ def build_html(payload: dict[str, Any]) -> str:
       <h2>算法流程</h2>
       <p>本项目把无监督跨模态 ReID 拆成“单模态伪标签初始化”和“跨模态关联优化”两段。论文第 5 章的最终方法在此基础上加入 MDUE 样本置信度和 CGCF 跨模态中心融合。</p>
       <ol class="flow-steps">
-        <li><strong>1. 数据准备</strong><span>读取 RegDB/SYSU 的 RGB 与 IR 图像，按官方划分生成训练集、查询集和图库。</span></li>
+        <li><strong>1. 数据准备</strong><span>读取 RegDB/SYSU 的 RGB 与 IR 图像，按各自官方协议生成训练集、查询集和图库；两个数据集规模和搜索协议不同，指标不能直接互相替代。</span></li>
         <li><strong>2. 特征初始化</strong><span>使用 ImageNet 预训练 backbone 提取两种模态的初始特征，并用 GeM/BNNeck 形成检索向量。</span></li>
         <li><strong>3. Stage1 聚类训练</strong><span>分别对 RGB 与 IR 特征做 DBSCAN 聚类，把聚类 ID 当作伪标签，用 DCL 和 ClusterMemory 训练初始模型。</span></li>
         <li><strong>4. MDUE 特征抽取</strong><span>开启 MC-Dropout，原图和水平翻转图各做多次随机前向，取均值作为稳健特征，并由方差得到样本置信度。</span></li>
@@ -1059,14 +1106,14 @@ def build_html(payload: dict[str, Any]) -> str:
         <dd>初始提交 <code>d9145c9</code> 中已有 <code>extract_features(..., mc_drop)</code> 和 <code>confidence_fusion_features()</code> 这类辅助函数雏形，但 <code>train_regdb.py</code> 没有暴露 <code>--mdue-samples</code>、<code>--use-cgcf</code>，也没有把它们接入 RegDB stage1/stage2 训练路径。</dd>
         <dt>本次接入</dt>
         <dd>当前版本在 <code>train_regdb.py</code> 中加入 MDUE/CGCF 开关：stage1 与 stage2 的聚类特征抽取使用 <code>S=3</code> 的 MC-Dropout 均值特征；stage2 的 All-memory 原型在开启 CGCF 时调用置信度引导的跨模态中心融合。</dd>
-        <dt>Dropout 修正</dt>
-        <dd><code>clustercontrast/models/agw.py</code> 使用 <code>mc_dropout_active</code> 控制 Dropout，仅在不确定性采样阶段激活；普通评估和 baseline 不受随机 Dropout 干扰。</dd>
+        <dt>Dropout 实现</dt>
+        <dd>本轮回到最早可运行模块实现：<code>clustercontrast/evaluators.py</code> 使用初始提交中的 MC variance 置信度公式，<code>clustercontrast/models/agw.py</code> 使用普通 <code>nn.Dropout</code>；<code>extract_features(..., mc_drop=3)</code> 会在特征抽取阶段临时开启 Dropout。</dd>
         <dt>论文参数</dt>
         <dd>full AMP 组保持 <code>epochs=50</code>、<code>iters=100</code>、<code>eps=0.3</code>、<code>momentum=0.1</code>、<code>num_instances=16</code>；baseline 使用 <code>S=1</code>、<code>dropout=0</code>、不开 CGCF，MDUE/CGCF 组使用 <code>S=3</code>、<code>dropout=0.10</code>。</dd>
         <dt>环境差异</dt>
         <dd>允许差异集中在 Python 3.12、PyTorch 2.6.0、V100 16GB 和 AMP fp16。stage2 使用较小 batch 以适配显存，实际值在表格中记录。</dd>
-        <dt>公式注意</dt>
-        <dd>当前 CGCF 按论文公式同时用跨模态一致性 <code>s_vr</code> 乘到 RGB/IR 两侧权重；两侧共同归一化时，差异性权重主要来自 <code>c_rgb</code> 与 <code>c_ir</code>，这会影响后续解释 CGCF 增益的幅度。</dd>
+        <dt>主实验口径</dt>
+        <dd>10-trial 主实验只认 <code>paper_amp10</code> 组：baseline 是 <code>PCLHD AMP baseline</code>，ours 是 <code>PCLHD+MDUE+CGCF</code>，中间的 <code>PCLHD+MDUE</code> 用于隔离 MDUE 模块贡献。</dd>
       </dl>
     </section>
     <section class="panel">
@@ -1120,7 +1167,7 @@ def build_html(payload: dict[str, Any]) -> str:
           <tbody></tbody>
         </table>
       </div>
-      <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文表格；来源列沿用论文的 Venue/年份标注。论文最终方法 <code>PCLHD+MDUE+CGCF</code> 标为 Ours 并固定在默认排序的最后一行；本次 AMP 复现实验结果在下方消融与 paper-parameter 表中单独展示。</p>
+      <p class="source-note muted">文献行来自 NeurIPS 2024 PCLHD 论文表格；来源列沿用论文的 Venue/年份标注。论文最终方法 <code>PCLHD+MDUE+CGCF</code> 标为 Ours 并固定在默认排序的最后一行。SYSU-MM01 与 RegDB 是不同数据集和协议，表 5.2 与表 5.3 只在各自数据集内比较。</p>
     </section>
     <section class="panel">
       <h2>AMP vs FP32 Baseline Check</h2>
@@ -1134,7 +1181,7 @@ def build_html(payload: dict[str, Any]) -> str:
         <label>Search<input id="quickSearchInput" type="search" placeholder="method, config, status, folder"></label>
         <button id="clearQuickFilters" type="button">Clear</button>
       </div>
-      <p class="muted">这里汇总 quick 消融、修复版 MDUE smoke，以及按论文参数启动的 AMP 组。默认使用 RegDB trial 1-3 判断 baseline、MDUE 和 CGCF 的相对趋势。</p>
+      <p class="muted">这里汇总历史 quick 消融、旧 1-3 trial AMP 组，以及当前 10-trial 主实验。主结论只看 <code>paper_amp10</code> 组：<code>PCLHD AMP baseline</code>、<code>PCLHD+MDUE</code> 和我们的 <code>PCLHD+MDUE+CGCF</code>。</p>
       <div class="table-wrap">
         <table id="quickAblationTable">
           <thead>
@@ -1187,7 +1234,7 @@ def build_html(payload: dict[str, Any]) -> str:
     <section class="panel">
       <h2>术语解释</h2>
       <dl class="term-list">
-        <dt>run</dt><dd>一次具体训练任务。本次主实验包含 3 个方法配置和 3 个 RegDB trial；每个 trial 有 stage1 和 stage2，所以期望看到 18 个 stage-level run。</dd>
+        <dt>run</dt><dd>一次具体训练任务。本次主实验包含 3 个方法配置和 10 个 RegDB trial；底层训练会运行 baseline/MDUE 的 stage1+stage2，并让我们的方法复用 MDUE stage1 后运行 CGCF stage2。报告主表按 stage2 结果统计，因此期望看到 30 个主实验结果行。</dd>
         <dt>epoch</dt><dd>完整遍历一次当前训练采样流程后的评估点。本报告逐 epoch 记录 Rank 和 mAP，便于观察训练走势。</dd>
         <dt>checkpoint</dt><dd>训练过程中保存的最佳模型权重。本报告的 Ckpt 字段对应日志里记录的 best epoch。</dd>
         <dt>Rank-1 / R1</dt><dd>查询图像检索结果的第一名就是正确身份的比例。越高越好，是行人重识别最直观的指标。</dd>
@@ -1521,12 +1568,12 @@ def build_html(payload: dict[str, Any]) -> str:
       const meanMap = validation.stage2_best_map_mean;
       const cards = [
         ['Report Status', validation.report_ok ? 'complete' : 'incomplete', validation.primary_full_ok ? 'full AMP runs complete' : 'waiting for full AMP runs'],
-        ['Full AMP Runs', `${{primaryComplete}} / ${{primaryExpected}}`, 'paper-parameter baseline, MDUE, and MDUE+CGCF'],
+        ['10-Trial AMP Runs', `${{primaryComplete}} / ${{primaryExpected}}`, 'PCLHD AMP baseline, MDUE ablation, and ours'],
         ['Legacy Runs', `${{completeRuns}} / ${{expectedRuns}}`, validation.legacy_ok ? 'all expected legacy logs complete' : 'legacy logs may be missing'],
         ['Stage2 Best R1', maxR1 === null ? '' : fmtPercent(maxR1), 'max over completed stage2 trials'],
         ['Stage2 Mean R1', meanR1 === null ? '' : fmtPercent(meanR1), `${{validation.complete_stage2_count}} completed stage2 trials`],
         ['Stage2 Mean mAP', meanMap === null ? '' : fmtPercent(meanMap), 'mean max mAP over completed stage2 trials'],
-        ['Quick Ablations', `${{quickComplete}} / ${{quickExpected}}`, 'trial 1-3 ablation runs complete']
+        ['Tracked Ablations', `${{quickComplete}} / ${{quickExpected}}`, 'historical quick runs plus current 10-trial runs']
       ];
       document.getElementById('cards').innerHTML = cards.map(([label, value, note]) => `<article class="card"><div class="label">${{escapeHtml(label)}}</div><div class="value">${{escapeHtml(value || 'n/a')}}</div><div class="note">${{escapeHtml(note)}}</div></article>`).join('');
     }}

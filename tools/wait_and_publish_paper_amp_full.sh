@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT="${ROOT:-/agent/regdb}"
 PYTHON="${PYTHON:-/mnt/conda/envs/regdb/bin/python}"
-TRAIN_LOG="${TRAIN_LOG:-logs/paper_amp_full_ablation.log}"
-PUBLISH_LOG="${PUBLISH_LOG:-logs/paper_amp_full_publish.log}"
+TRAIN_LOG="${TRAIN_LOG:-logs/paper_amp10_ablation.log}"
+PUBLISH_LOG="${PUBLISH_LOG:-logs/paper_amp10_publish.log}"
 POLL_SECONDS="${POLL_SECONDS:-600}"
-TRIALS="${TRIALS:-1-3}"
+TRIALS="${TRIALS:-1-10}"
 AUTO_GIT="${AUTO_GIT:-1}"
 
 cd "$ROOT"
@@ -47,7 +47,7 @@ if [ "$AUTO_GIT" = "1" ]; then
   if git diff --cached --quiet; then
     echo "COMMIT_SKIPPED:no report changes"
   else
-    git commit -m "Update full paper AMP ablation report"
+    git commit -m "Update 10-trial AMP ablation report"
     if ! git push; then
       echo "PUSH_FAILED:first attempt, retrying with proxy if available"
       if [ -f /etc/profile.d/clash.sh ]; then
