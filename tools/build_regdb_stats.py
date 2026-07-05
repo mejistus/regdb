@@ -1056,64 +1056,55 @@ def build_html(payload: dict[str, Any]) -> str:
   <main>
     <section class="cards" id="cards"></section>
     <section class="panel">
-      <h2>项目与方法说明</h2>
+      <h2>论文方法论</h2>
+      <p>本节以论文写作口径概述本项目所复现的方法框架。实验任务定义为无监督可见光-红外行人重识别，即在不使用人工身份标注的条件下，从可见光模态与红外模态图像中学习具有身份判别性和跨模态一致性的特征表示。检索阶段以一种模态作为查询集，另一种模态作为图库集，并依据特征距离排序候选图像。</p>
+      <p>报告中的基线方法统一记为 <code>PCLHD AMP baseline</code>；完整方法记为 <code>PCLHD+MDUE+CGCF</code>，即本文复现的目标方法。<code>MDUE</code> 与 <code>CGCF</code> 分别作为两个提出模块进行消融分析。SYSU-MM01 与 RegDB 采用不同的数据规模、划分协议和搜索设置，因此两类数据集的数值仅在各自协议内进行比较。</p>
       <div class="explain-grid">
         <div class="explain-block">
-          <h3>这个项目做什么</h3>
-          <p>本项目复现的是无监督可见光-红外行人重识别。输入是一组可见光图像和一组红外图像，训练时不使用人工身份标签，目标是学习同一个人在两种模态下都接近的特征表示。</p>
-          <p>评测时用一个模态作为查询，另一个模态作为图库，按特征距离检索同一身份。当前 RegDB 脚本记录的是 visible-to-thermal 方向。</p>
+          <h3>研究任务</h3>
+          <p>给定可见光图像集合与红外图像集合，模型需要在缺少真实身份标签的条件下构建跨模态身份表征。训练阶段通过聚类结果生成伪标签，并以伪标签监督特征学习；测试阶段使用 Rank-1、mAP 与 mINP 等指标评价跨模态检索性能。</p>
         </div>
         <div class="explain-block">
-          <h3>为什么有多个 trial</h3>
-          <p>RegDB 官方提供 10 组划分。每个 <code>trial</code> 都是一套不同的训练/测试拆分，论文通常报告 10 个 trial 的平均结果，以降低单次划分带来的偶然性。</p>
-          <p>本次 AMP fp16 复现按当前目标重新跑 RegDB 官方 trial 1-10。baseline 固定为 <code>PCLHD AMP baseline</code>，我们的完整方法是 <code>PCLHD+MDUE+CGCF</code>，<code>MDUE</code> 与 <code>CGCF</code> 作为两个提出模块做消融。</p>
+          <h3>总体框架</h3>
+          <p>方法采用两阶段训练范式。第一阶段侧重于单模态伪标签初始化，分别对 RGB 与 IR 特征进行聚类并训练初始模型；第二阶段在初始模型基础上引入跨模态关联、记忆库约束与原型对齐，以缓解可见光和红外图像之间的模态差异。</p>
         </div>
         <div class="explain-block">
-          <h3>为什么有 stage1 和 stage2</h3>
-          <p><code>stage1</code> 是初始无监督聚类训练：分别对 RGB/IR 特征做聚类，把聚类编号当作伪标签训练模型，得到可用的初始 checkpoint。</p>
-          <p><code>stage2</code> 从 stage1 checkpoint 继续训练，加入跨模态关联和二分图匹配，把 RGB 与 IR 中可能属于同一人的聚类对应起来，重点优化跨模态检索性能。</p>
+          <h3>MDUE 模块</h3>
+          <p>MDUE 用于估计样本级模态不确定性。该模块在特征抽取阶段启用 MC-Dropout，对同一样本执行多次随机前向传播，以特征均值作为稳健表征，并由特征方差推导置信度权重。低不确定性的样本在后续原型构建中获得更高贡献。</p>
         </div>
         <div class="explain-block">
-          <h3>论文第 5 章创新点</h3>
-          <p><code>MDUE</code> 在特征抽取时保持 Dropout 随机性，多次前向估计样本表征方差，并把低方差样本赋予更高置信度。本次 AMP fp16 复现按论文设置 <code>S=3</code>、<code>p=0.10</code>。</p>
-          <p><code>CGCF</code> 在 All-memory 原型构造时，不再简单平均 RGB/IR 中心，而是用模态置信度和跨模态一致性加权融合簇中心。</p>
-        </div>
-        <div class="explain-block">
-          <h3>本次复现设置</h3>
-          <p>环境使用 Python 3.12、PyTorch 2.6.0、单张 Tesla V100 16GB 和 <code>AMP fp16</code>。正式 AMP 组保持论文训练长度与聚类参数；stage1 使用 batch 64，stage2 使用 batch 32 以适配显存，表格中的 <code>Batch</code> 列会记录每个 run 的实际 batch size。</p>
-          <p>当前报告的主结论只比较同一 AMP fp16 环境下的 <code>PCLHD AMP baseline</code>、<code>PCLHD+MDUE</code> 和我们的 <code>PCLHD+MDUE+CGCF</code>，默认范围是 RegDB trial 1-10。</p>
+          <h3>CGCF 模块</h3>
+          <p>CGCF 用于构建置信度引导的跨模态聚类中心。该模块不直接采用 RGB 与 IR 聚类中心的均值，而是联合考虑模态置信度和中心一致性，对跨模态原型进行加权融合，从而提升统一记忆库中原型表示的可靠性。</p>
         </div>
       </div>
     </section>
     <section class="panel">
-      <h2>算法流程</h2>
-      <p>本项目把无监督跨模态 ReID 拆成“单模态伪标签初始化”和“跨模态关联优化”两段。论文第 5 章的最终方法在此基础上加入 MDUE 样本置信度和 CGCF 跨模态中心融合。</p>
+      <h2>方法流程</h2>
+      <p>完整训练过程可概括为从单模态可靠伪标签到跨模态一致原型的逐步优化。该流程在保持 PCLHD 主干训练策略的基础上，引入 MDUE 的样本置信度估计和 CGCF 的跨模态原型融合。</p>
       <ol class="flow-steps">
-        <li><strong>1. 数据准备</strong><span>读取 RegDB/SYSU 的 RGB 与 IR 图像，按各自官方协议生成训练集、查询集和图库；两个数据集规模和搜索协议不同，指标不能直接互相替代。</span></li>
-        <li><strong>2. 特征初始化</strong><span>使用 ImageNet 预训练 backbone 提取两种模态的初始特征，并用 GeM/BNNeck 形成检索向量。</span></li>
-        <li><strong>3. Stage1 聚类训练</strong><span>分别对 RGB 与 IR 特征做 DBSCAN 聚类，把聚类 ID 当作伪标签，用 DCL 和 ClusterMemory 训练初始模型。</span></li>
-        <li><strong>4. MDUE 特征抽取</strong><span>开启 MC-Dropout，原图和水平翻转图各做多次随机前向，取均值作为稳健特征，并由方差得到样本置信度。</span></li>
-        <li><strong>5. CGCF 原型融合</strong><span>对同一 All-cluster 的 RGB/IR 中心，用模态置信度和中心相似度计算权重，得到更可靠的统一跨模态原型。</span></li>
-        <li><strong>6. Stage2 跨模态关联</strong><span>加载 stage1 checkpoint，构造 RGB、IR、All 三组 memory，通过跨模态相似度和二分图匹配建立 RGB-IR 原型对应关系。</span></li>
-        <li><strong>7. 评估与汇总</strong><span>用最终 stage2 checkpoint 做 visible-to-thermal 与 thermal-to-visible 检索，汇总 Rank-1、mAP、mINP 和逐 trial 均值。</span></li>
+        <li><strong>1. 数据协议构建</strong><span>按照 SYSU-MM01 与 RegDB 的官方协议分别构建训练集、查询集和图库集。RegDB 主实验使用官方 10 个 trial，并报告跨 trial 平均结果。</span></li>
+        <li><strong>2. 初始特征提取</strong><span>采用 ImageNet 预训练的 AGW/ResNet 主干提取 RGB 与 IR 图像特征，并通过 GeM 与 BNNeck 得到用于聚类和检索的嵌入向量。</span></li>
+        <li><strong>3. Stage1 单模态伪标签学习</strong><span>分别在可见光和红外模态内执行 DBSCAN 聚类，将聚类编号作为伪身份标签，并通过 DCL 损失和 ClusterMemory 更新模型参数。</span></li>
+        <li><strong>4. MDUE 不确定性估计</strong><span>在聚类特征抽取阶段对每个样本进行多次 Dropout 前向传播，计算均值特征和方差统计，并将方差映射为样本置信度。</span></li>
+        <li><strong>5. Stage2 跨模态关联学习</strong><span>加载 Stage1 checkpoint，分别构建 RGB memory、IR memory 与 All memory，并基于跨模态相似度和二分图匹配建立可见光-红外原型对应关系。</span></li>
+        <li><strong>6. CGCF 置信度融合</strong><span>在 All-memory 原型构造阶段，根据 MDUE 置信度和跨模态中心一致性计算融合权重，形成更稳定的统一跨模态原型。</span></li>
+        <li><strong>7. 跨模态检索评估</strong><span>使用最终 Stage2 模型进行 visible-to-thermal 与 thermal-to-visible 检索，并统计 Rank-1、mAP、mINP 以及每个 trial 的最优 epoch 结果。</span></li>
       </ol>
     </section>
     <section class="panel">
-      <h2>实现审计与参数对齐</h2>
-      <p>这部分记录当前复现代码和论文方法的对应关系，便于解释“代码里是否真的包含 MDUE/CGCF”。</p>
+      <h2>复现协议与实现对齐</h2>
+      <p>为保证实验结论可审计，本报告同时记录论文方法与当前代码实现之间的对应关系。下述口径用于解释主实验、消融实验和环境差异。</p>
       <dl class="audit-list">
-        <dt>原始代码状态</dt>
-        <dd>初始提交 <code>d9145c9</code> 中已有 <code>extract_features(..., mc_drop)</code> 和 <code>confidence_fusion_features()</code> 这类辅助函数雏形，但 <code>train_regdb.py</code> 没有暴露 <code>--mdue-samples</code>、<code>--use-cgcf</code>，也没有把它们接入 RegDB stage1/stage2 训练路径。</dd>
-        <dt>本次接入</dt>
-        <dd>当前版本在 <code>train_regdb.py</code> 中加入 MDUE/CGCF 开关：stage1 与 stage2 的聚类特征抽取使用 <code>S=3</code> 的 MC-Dropout 均值特征；stage2 的 All-memory 原型在开启 CGCF 时调用置信度引导的跨模态中心融合。</dd>
-        <dt>Dropout 实现</dt>
-        <dd>本轮回到最早可运行模块实现：<code>clustercontrast/evaluators.py</code> 使用初始提交中的 MC variance 置信度公式，<code>clustercontrast/models/agw.py</code> 使用普通 <code>nn.Dropout</code>；<code>extract_features(..., mc_drop=3)</code> 会在特征抽取阶段临时开启 Dropout。</dd>
-        <dt>论文参数</dt>
-        <dd>full AMP 组保持 <code>epochs=50</code>、<code>iters=100</code>、<code>eps=0.3</code>、<code>momentum=0.1</code>、<code>num_instances=16</code>；baseline 使用 <code>S=1</code>、<code>dropout=0</code>、不开 CGCF，MDUE/CGCF 组使用 <code>S=3</code>、<code>dropout=0.10</code>。</dd>
-        <dt>环境差异</dt>
-        <dd>允许差异集中在 Python 3.12、PyTorch 2.6.0、V100 16GB 和 AMP fp16。stage2 使用较小 batch 以适配显存，实际值在表格中记录。</dd>
-        <dt>主实验口径</dt>
-        <dd>10-trial 主实验只认 <code>paper_amp10</code> 组：baseline 是 <code>PCLHD AMP baseline</code>，ours 是 <code>PCLHD+MDUE+CGCF</code>，中间的 <code>PCLHD+MDUE</code> 用于隔离 MDUE 模块贡献。</dd>
+        <dt>方法命名</dt>
+        <dd><code>PCLHD AMP baseline</code> 表示未启用 MDUE 和 CGCF 的 AMP 基线；<code>PCLHD+MDUE</code> 表示仅启用不确定性估计模块；<code>PCLHD+MDUE+CGCF</code> 表示同时启用 MDUE 与 CGCF 的完整方法，并在表格中标记为 Ours。</dd>
+        <dt>训练设置</dt>
+        <dd>主实验采用 Python 3.12、PyTorch 2.6.0、Tesla V100 16GB 与 AMP fp16 混合精度训练。每个配置在 RegDB 官方 trial 1-10 上复现；Stage1 和 Stage2 均设置 <code>epochs=50</code>、<code>iters=100</code>、<code>eps=0.3</code>、<code>momentum=0.1</code> 和 <code>num_instances=16</code>。</dd>
+        <dt>模块参数</dt>
+        <dd>基线设置为 <code>S=1</code>、<code>dropout=0</code> 且关闭 CGCF；MDUE 和完整方法设置为 <code>S=3</code>、<code>dropout=0.10</code>。完整方法在 Stage2 All-memory 原型构造中启用 CGCF。</dd>
+        <dt>实现边界</dt>
+        <dd>当前训练核心回到最早可运行实现，并仅保留 PyTorch 2.6.0 AMP 环境下 memory bank 的 fp32 guard。该 guard 用于避免半精度自定义 autograd 更新带来的数值风险，不改变 MDUE、CGCF 或 PCLHD 的算法定义。</dd>
+        <dt>结果口径</dt>
+        <dd>主结论仅基于 <code>paper_amp10</code> 组的 30 条 Stage2 结果，即 3 个方法配置乘以 10 个 RegDB trial。表 5.2 与表 5.3 分别呈现 SYSU-MM01 与 RegDB 的文献结果，二者不进行跨数据集数值替代。</dd>
       </dl>
     </section>
     <section class="panel">
