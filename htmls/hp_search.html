@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RegDB PCLHD+MDUE+CGCF Hyperparameter Search</title>
+  <style>
+    :root {{
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --border: #d9dee7;
+      --text: #1f2937;
+      --muted: #64748b;
+      --strong: #0f172a;
+      --accent: #2563eb;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --good: #047857;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      line-height: 1.45;
+    }}
+    main {{
+      width: min(1440px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 40px;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+      color: var(--strong);
+      font-size: 26px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }}
+    h2 {{
+      margin: 0 0 12px;
+      color: var(--strong);
+      font-size: 18px;
+      letter-spacing: 0;
+    }}
+    p {{ margin: 0; }}
+    .subhead {{
+      color: var(--muted);
+      max-width: 980px;
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }}
+    .card, .panel {{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }}
+    .card {{
+      min-height: 104px;
+      padding: 14px;
+    }}
+    .card .label {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .card .value {{
+      margin-top: 8px;
+      color: var(--strong);
+      font-size: 24px;
+      font-weight: 760;
+      font-variant-numeric: tabular-nums;
+    }}
+    .card .detail {{
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .panel {{
+      margin-top: 16px;
+      padding: 16px;
+    }}
+    .controls {{
+      display: grid;
+      grid-template-columns: 1.4fr repeat(3, minmax(150px, .7fr)) auto auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }}
+    label {{
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    input, select, button {{
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+    }}
+    input {{ padding: 0 10px; }}
+    select {{ padding: 4px 8px; }}
+    select[multiple] {{ min-height: 70px; }}
+    button {{
+      padding: 0 12px;
+      cursor: pointer;
+      font-weight: 650;
+    }}
+    button.primary {{
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }}
+    .note {{
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #f1d195;
+      border-radius: 8px;
+      background: #fff8ea;
+      color: #7c4a03;
+      font-size: 13px;
+    }}
+    .note.strong {{
+      border-color: #f0aaaa;
+      background: #fff1f1;
+      color: #7f1d1d;
+    }}
+    .table-wrap {{
+      width: 100%;
+      max-height: 68vh;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      min-width: 1040px;
+      font-size: 13px;
+    }}
+    th, td {{
+      padding: 8px 10px;
+      border-bottom: 1px solid #e7ebf1;
+      text-align: left;
+      white-space: nowrap;
+    }}
+    th {{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 760;
+      cursor: pointer;
+      user-select: none;
+    }}
+    tbody tr:hover td {{ background: #f9fbff; }}
+    td.num, th.num {{
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }}
+    .mono {{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      font-size: 12px;
+      font-weight: 720;
+    }}
+    .pill.complete {{ color: var(--good); border-color: #a7f3d0; background: #ecfdf5; }}
+    .pill.incomplete, .pill.started {{ color: var(--warn); border-color: #fed7aa; background: #fff7ed; }}
+    .pill.missing {{ color: var(--bad); border-color: #fecaca; background: #fef2f2; }}
+    .best-row td {{
+      box-shadow: inset 3px 0 0 var(--accent);
+      background: #f8fbff;
+    }}
+    .methodology {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }}
+    .methodology div {{
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }}
+    .methodology h3 {{
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--strong);
+    }}
+    .methodology ul {{
+      margin: 0;
+      padding-left: 18px;
+      color: #475569;
+    }}
+    .methodology li {{ margin: 5px 0; }}
+    @media (max-width: 980px) {{
+      main {{ width: min(100vw - 20px, 1440px); }}
+      .grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .controls {{ grid-template-columns: 1fr 1fr; }}
+      .methodology {{ grid-template-columns: 1fr; }}
+    }}
+    @media (max-width: 640px) {{
+      .grid, .controls {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+<main>
+  <h1>RegDB PCLHD+MDUE+CGCF 超参数搜索报告</h1>
+  <p class="subhead">以 PCLHD + MDUE + CGCF 为 ours，按 RegDB 10-trial 的 stage2 最佳 Rank-1 均值排序，mAP 均值作为并列时的辅助指标。未完成候选不进入官方最佳排序。</p>
+
+  <section class="grid" id="cards"></section>
+
+  <section class="panel">
+    <h2>结论与方法约束</h2>
+    <div id="statusNotes"></div>
+    <div class="methodology">
+      <div>
+        <h3>评分规则</h3>
+        <ul>
+          <li>每个候选必须完成 10 个 RegDB trial，才进入正式排名。</li>
+          <li>每个 trial 使用 stage2 日志中的 best Rank-1 和 best mAP。</li>
+          <li>主指标为 10-trial mean Rank-1；mAP 只作为并列时的 tie-break。</li>
+        </ul>
+      </div>
+      <div>
+        <h3>候选含义</h3>
+        <ul>
+          <li><span class="mono">S</span> 是 MDUE 的 MC-Dropout 采样次数。</li>
+          <li><span class="mono">p</span> 是 MDUE 的 dropout 概率。</li>
+          <li>CGCF 在 stage2 中进行 confidence-guided cross-modal center fusion。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>候选配置汇总</h2>
+    <div class="controls">
+      <label>Search <input id="summarySearch" type="search" placeholder="tag, source, status"></label>
+      <label>Status <select id="statusFilter" multiple></select></label>
+      <label>Source <select id="sourceFilter" multiple></select></label>
+      <label>S <select id="sampleFilter" multiple></select></label>
+      <button id="clearFilters">Clear</button>
+      <button class="primary" id="downloadSummary">CSV</button>
+    </div>
+    <div class="table-wrap">
+      <table id="summaryTable"></table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Trial 级明细</h2>
+    <div class="controls">
+      <label>Search <input id="trialSearch" type="search" placeholder="tag, trial, log path"></label>
+      <label>Stage2 status <select id="trialStatusFilter" multiple></select></label>
+      <label>Candidate <select id="tagFilter" multiple></select></label>
+      <label>Source <select id="trialSourceFilter" multiple></select></label>
+      <button id="clearTrialFilters">Clear</button>
+      <button class="primary" id="downloadTrials">CSV</button>
+    </div>
+    <div class="table-wrap">
+      <table id="trialTable"></table>
+    </div>
+  </section>
+</main>
+
+<script>
+const PAYLOAD = {"manifest": {"title": "RegDB PCLHD+MDUE+CGCF Hyperparameter Search", "dataset": "RegDB visible-to-thermal setting", "method": "PCLHD + MDUE + CGCF", "metric_policy": "Official score is the arithmetic mean of stage2 best Rank-1 across 10 RegDB trials. Mean mAP is used as the tie-breaker.", "script": "tools/build_regdb_hp_search_report.py", "summary_json": "logs/regdb_ours_hp10_search_summary.json", "generated_at": "2026-07-09 13:01 CST", "status_note": "Checked on 2026-07-09 12:59 CST from /agent/regdb. Completed candidates are ranked by 10-trial mean stage2 best Rank-1.", "failure_note": "The planned search stopped during s4_p005 trial 7 stage1 with RuntimeError: CUDA error: unknown error. nvidia-smi then reported GPU0 Unknown Error, so s4_p005 remains 6/10 and s2_p010 remains 0/10."}, "best": {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "stage1": "regdb_s1_hp10_s2_p005", "stage2": "regdb_s2_hp10_s2_p005_cgcf", "source": "strict_search", "expected_trials": 10, "complete_trials": 10, "mean_best_rank1": 85.3, "mean_best_map": 79.7, "max_best_rank1": 91.2, "max_best_map": 84.8, "trials": [{"trial": 1, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 25.7, "best_map": 26.2, "best_epoch": 17, "current_rank1": 22.4, "current_map": 23.7, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/1/1log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 89.2, "best_map": 83.3, "best_epoch": 38, "current_rank1": 89.1, "current_map": 83.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/1/1log.txt"}}, {"trial": 2, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 29.3, "best_map": 28.0, "best_epoch": 17, "current_rank1": 24.1, "current_map": 24.5, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/2/2log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 85.0, "best_map": 77.8, "best_epoch": 39, "current_rank1": 84.2, "current_map": 78.1, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/2/2log.txt"}}, {"trial": 3, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 28.7, "best_map": 28.8, "best_epoch": 28, "current_rank1": 24.9, "current_map": 25.1, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/3/3log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 86.1, "best_map": 81.0, "best_epoch": 38, "current_rank1": 85.8, "current_map": 80.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/3/3log.txt"}}, {"trial": 4, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 33.8, "best_map": 33.2, "best_epoch": 48, "current_rank1": 31.6, "current_map": 31.3, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/4/4log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.6, "best_map": 72.3, "best_epoch": 45, "current_rank1": 75.5, "current_map": 71.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/4/4log.txt"}}, {"trial": 5, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 36.5, "best_map": 34.8, "best_epoch": 36, "current_rank1": 33.5, "current_map": 32.3, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/5/5log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.0, "best_map": 78.6, "best_epoch": 40, "current_rank1": 83.6, "current_map": 78.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/5/5log.txt"}}, {"trial": 6, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 24.8, "best_map": 24.7, "best_epoch": 11, "current_rank1": 22.6, "current_map": 23.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/6/6log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.2, "best_map": 78.7, "best_epoch": 45, "current_rank1": 83.4, "current_map": 78.0, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/6/6log.txt"}}, {"trial": 7, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.8, "best_map": 27.7, "best_epoch": 46, "current_rank1": 23.8, "current_map": 24.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/7/7log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 81.5, "best_map": 75.6, "best_epoch": 49, "current_rank1": 81.5, "current_map": 75.6, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/7/7log.txt"}}, {"trial": 8, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.0, "best_map": 28.5, "best_epoch": 30, "current_rank1": 26.4, "current_map": 27.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/8/8log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 88.6, "best_map": 84.0, "best_epoch": 46, "current_rank1": 88.3, "current_map": 83.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/8/8log.txt"}}, {"trial": 9, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 30.5, "best_map": 30.2, "best_epoch": 31, "current_rank1": 28.9, "current_map": 29.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/9/9log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 86.6, "best_map": 80.9, "best_epoch": 39, "current_rank1": 85.6, "current_map": 80.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/9/9log.txt"}}, {"trial": 10, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 33.1, "best_map": 31.9, "best_epoch": 42, "current_rank1": 30.5, "current_map": 30.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/10/10log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 91.2, "best_map": 84.8, "best_epoch": 41, "current_rank1": 91.1, "current_map": 84.4, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/10/10log.txt"}}], "status": "complete", "official_rank": 1, "std_best_rank1": 3.95423823258033, "min_best_rank1": 76.6, "trial_best_rank1_values": [89.2, 85.0, 86.1, 76.6, 84.0, 84.2, 81.5, 88.6, 86.6, 91.2]}, "validation": {"candidate_count": 5, "complete_candidate_count": 3, "incomplete_candidate_count": 2, "expected_trial_count": 50, "complete_trial_count": 36, "missing_stage2_count": 14, "started_stage2_count": 0, "all_candidates_complete": false, "incomplete_candidates": ["s4_p005", "s2_p010"], "best_scope": "completed 10-trial candidates only", "complete_mean_rank1_mean": 84.13}, "summary_rows": [{"tag": "s2_p005", "samples": 2, "dropout": 0.05, "stage1": "regdb_s1_hp10_s2_p005", "stage2": "regdb_s2_hp10_s2_p005_cgcf", "source": "strict_search", "expected_trials": 10, "complete_trials": 10, "mean_best_rank1": 85.3, "mean_best_map": 79.7, "max_best_rank1": 91.2, "max_best_map": 84.8, "trials": [{"trial": 1, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 25.7, "best_map": 26.2, "best_epoch": 17, "current_rank1": 22.4, "current_map": 23.7, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/1/1log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 89.2, "best_map": 83.3, "best_epoch": 38, "current_rank1": 89.1, "current_map": 83.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/1/1log.txt"}}, {"trial": 2, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 29.3, "best_map": 28.0, "best_epoch": 17, "current_rank1": 24.1, "current_map": 24.5, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/2/2log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 85.0, "best_map": 77.8, "best_epoch": 39, "current_rank1": 84.2, "current_map": 78.1, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/2/2log.txt"}}, {"trial": 3, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 28.7, "best_map": 28.8, "best_epoch": 28, "current_rank1": 24.9, "current_map": 25.1, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/3/3log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 86.1, "best_map": 81.0, "best_epoch": 38, "current_rank1": 85.8, "current_map": 80.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/3/3log.txt"}}, {"trial": 4, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 33.8, "best_map": 33.2, "best_epoch": 48, "current_rank1": 31.6, "current_map": 31.3, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/4/4log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.6, "best_map": 72.3, "best_epoch": 45, "current_rank1": 75.5, "current_map": 71.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/4/4log.txt"}}, {"trial": 5, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 36.5, "best_map": 34.8, "best_epoch": 36, "current_rank1": 33.5, "current_map": 32.3, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/5/5log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.0, "best_map": 78.6, "best_epoch": 40, "current_rank1": 83.6, "current_map": 78.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/5/5log.txt"}}, {"trial": 6, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 24.8, "best_map": 24.7, "best_epoch": 11, "current_rank1": 22.6, "current_map": 23.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/6/6log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.2, "best_map": 78.7, "best_epoch": 45, "current_rank1": 83.4, "current_map": 78.0, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/6/6log.txt"}}, {"trial": 7, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.8, "best_map": 27.7, "best_epoch": 46, "current_rank1": 23.8, "current_map": 24.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/7/7log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 81.5, "best_map": 75.6, "best_epoch": 49, "current_rank1": 81.5, "current_map": 75.6, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/7/7log.txt"}}, {"trial": 8, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.0, "best_map": 28.5, "best_epoch": 30, "current_rank1": 26.4, "current_map": 27.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/8/8log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 88.6, "best_map": 84.0, "best_epoch": 46, "current_rank1": 88.3, "current_map": 83.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/8/8log.txt"}}, {"trial": 9, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 30.5, "best_map": 30.2, "best_epoch": 31, "current_rank1": 28.9, "current_map": 29.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/9/9log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 86.6, "best_map": 80.9, "best_epoch": 39, "current_rank1": 85.6, "current_map": 80.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/9/9log.txt"}}, {"trial": 10, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 33.1, "best_map": 31.9, "best_epoch": 42, "current_rank1": 30.5, "current_map": 30.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/10/10log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 91.2, "best_map": 84.8, "best_epoch": 41, "current_rank1": 91.1, "current_map": 84.4, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/10/10log.txt"}}], "status": "complete", "official_rank": 1, "std_best_rank1": 3.95423823258033, "min_best_rank1": 76.6, "trial_best_rank1_values": [89.2, 85.0, 86.1, 76.6, 84.0, 84.2, 81.5, 88.6, 86.6, 91.2]}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "stage1": "regdb_s1_amp10_mdue", "stage2": "regdb_s2_amp10_mdue_cgcf", "source": "completed_paper_setting", "expected_trials": 10, "complete_trials": 10, "mean_best_rank1": 84.16, "mean_best_map": 78.46, "max_best_rank1": 89.8, "max_best_map": 83.3, "trials": [{"trial": 1, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 77.8, "best_map": 72.3, "best_epoch": 43, "current_rank1": 76.5, "current_map": 71.7, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/1/1log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 77.1, "best_map": 71.8, "best_epoch": 40, "current_rank1": 75.7, "current_map": 71.0, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/1/1log.txt"}}, {"trial": 2, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 77.4, "best_map": 72.1, "best_epoch": 32, "current_rank1": 75.8, "current_map": 71.1, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/2/2log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.1, "best_map": 77.5, "best_epoch": 47, "current_rank1": 83.7, "current_map": 77.7, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/2/2log.txt"}}, {"trial": 3, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 87.0, "best_map": 82.6, "best_epoch": 47, "current_rank1": 86.7, "current_map": 82.2, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/3/3log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.1, "best_map": 79.9, "best_epoch": 47, "current_rank1": 83.9, "current_map": 79.7, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/3/3log.txt"}}, {"trial": 4, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 79.9, "best_map": 75.8, "best_epoch": 39, "current_rank1": 78.9, "current_map": 74.7, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/4/4log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 85.6, "best_map": 79.8, "best_epoch": 45, "current_rank1": 85.3, "current_map": 79.2, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/4/4log.txt"}}, {"trial": 5, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 83.3, "best_map": 76.7, "best_epoch": 46, "current_rank1": 82.6, "current_map": 76.3, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/5/5log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 89.8, "best_map": 82.6, "best_epoch": 41, "current_rank1": 89.5, "current_map": 82.2, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/5/5log.txt"}}, {"trial": 6, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 77.7, "best_map": 73.0, "best_epoch": 48, "current_rank1": 77.6, "current_map": 73.0, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/6/6log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.3, "best_map": 70.2, "best_epoch": 49, "current_rank1": 76.3, "current_map": 70.2, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/6/6log.txt"}}, {"trial": 7, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.8, "best_map": 72.2, "best_epoch": 25, "current_rank1": 73.7, "current_map": 70.2, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/7/7log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.9, "best_map": 79.8, "best_epoch": 49, "current_rank1": 84.9, "current_map": 79.8, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/7/7log.txt"}}, {"trial": 8, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 88.2, "best_map": 83.5, "best_epoch": 47, "current_rank1": 88.1, "current_map": 83.5, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/8/8log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 85.3, "best_map": 80.2, "best_epoch": 29, "current_rank1": 83.8, "current_map": 79.7, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/8/8log.txt"}}, {"trial": 9, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 82.8, "best_map": 78.4, "best_epoch": 47, "current_rank1": 82.2, "current_map": 77.6, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/9/9log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 84.7, "best_map": 79.5, "best_epoch": 48, "current_rank1": 83.0, "current_map": 78.4, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/9/9log.txt"}}, {"trial": 10, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 92.0, "best_map": 85.9, "best_epoch": 49, "current_rank1": 92.0, "current_map": 85.9, "log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/10/10log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 89.7, "best_map": 83.3, "best_epoch": 34, "current_rank1": 88.5, "current_map": 83.0, "log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/10/10log.txt"}}], "status": "complete", "official_rank": 2, "std_best_rank1": 4.2230794451442675, "min_best_rank1": 76.3, "trial_best_rank1_values": [77.1, 84.1, 84.1, 85.6, 89.8, 76.3, 84.9, 85.3, 84.7, 89.7]}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "stage1": "regdb_s1_hp10_s3_p005", "stage2": "regdb_s2_hp10_s3_p005_cgcf", "source": "strict_search", "expected_trials": 10, "complete_trials": 10, "mean_best_rank1": 82.93, "mean_best_map": 77.51, "max_best_rank1": 91.4, "max_best_map": 85.5, "trials": [{"trial": 1, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 29.6, "best_map": 30.0, "best_epoch": 27, "current_rank1": 28.4, "current_map": 28.5, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/1/1log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 80.5, "best_map": 75.4, "best_epoch": 34, "current_rank1": 78.3, "current_map": 73.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/1/1log.txt"}}, {"trial": 2, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 26.9, "best_map": 27.4, "best_epoch": 27, "current_rank1": 19.6, "current_map": 21.6, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/2/2log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 86.0, "best_map": 79.6, "best_epoch": 43, "current_rank1": 85.7, "current_map": 79.7, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/2/2log.txt"}}, {"trial": 3, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.6, "best_map": 27.6, "best_epoch": 26, "current_rank1": 27.2, "current_map": 26.7, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/3/3log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 85.6, "best_map": 81.7, "best_epoch": 40, "current_rank1": 85.0, "current_map": 81.6, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/3/3log.txt"}}, {"trial": 4, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 27.4, "best_map": 27.9, "best_epoch": 23, "current_rank1": 21.5, "current_map": 23.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/4/4log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 80.0, "best_map": 75.6, "best_epoch": 43, "current_rank1": 79.1, "current_map": 75.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/4/4log.txt"}}, {"trial": 5, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 26.8, "best_map": 26.2, "best_epoch": 33, "current_rank1": 22.3, "current_map": 23.6, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/5/5log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 91.4, "best_map": 84.0, "best_epoch": 32, "current_rank1": 90.0, "current_map": 83.6, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/5/5log.txt"}}, {"trial": 6, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 23.3, "best_map": 23.7, "best_epoch": 49, "current_rank1": 23.3, "current_map": 23.7, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/6/6log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.6, "best_map": 71.2, "best_epoch": 48, "current_rank1": 76.4, "current_map": 70.8, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/6/6log.txt"}}, {"trial": 7, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 23.7, "best_map": 23.8, "best_epoch": 16, "current_rank1": 17.5, "current_map": 19.6, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/7/7log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 72.2, "best_map": 67.1, "best_epoch": 42, "current_rank1": 69.8, "current_map": 65.3, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/7/7log.txt"}}, {"trial": 8, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 30.2, "best_map": 30.3, "best_epoch": 45, "current_rank1": 30.2, "current_map": 30.1, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/8/8log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 89.5, "best_map": 85.5, "best_epoch": 49, "current_rank1": 89.5, "current_map": 85.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/8/8log.txt"}}, {"trial": 9, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 28.6, "best_map": 28.4, "best_epoch": 15, "current_rank1": 23.7, "current_map": 24.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/9/9log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 87.1, "best_map": 80.3, "best_epoch": 37, "current_rank1": 86.7, "current_map": 80.9, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/9/9log.txt"}}, {"trial": 10, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 32.5, "best_map": 30.9, "best_epoch": 39, "current_rank1": 30.9, "current_map": 30.6, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/10/10log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 80.4, "best_map": 74.7, "best_epoch": 35, "current_rank1": 78.2, "current_map": 73.0, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/10/10log.txt"}}], "status": "complete", "official_rank": 3, "std_best_rank1": 5.700359637777252, "min_best_rank1": 72.2, "trial_best_rank1_values": [80.5, 86.0, 85.6, 80.0, 91.4, 76.6, 72.2, 89.5, 87.1, 80.4]}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "stage1": "regdb_s1_hp10_s4_p005", "stage2": "regdb_s2_hp10_s4_p005_cgcf", "source": "strict_search", "expected_trials": 10, "complete_trials": 6, "mean_best_rank1": 76.03333333333333, "mean_best_map": 71.0, "max_best_rank1": 81.1, "max_best_map": 75.0, "trials": [{"trial": 1, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 25.1, "best_map": 26.1, "best_epoch": 24, "current_rank1": 20.3, "current_map": 23.5, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/1/1log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 74.2, "best_map": 70.4, "best_epoch": 45, "current_rank1": 72.4, "current_map": 69.1, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/1/1log.txt"}}, {"trial": 2, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 29.0, "best_map": 29.7, "best_epoch": 33, "current_rank1": 28.0, "current_map": 28.1, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/2/2log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 81.1, "best_map": 75.0, "best_epoch": 47, "current_rank1": 80.8, "current_map": 75.6, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/2/2log.txt"}}, {"trial": 3, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 26.1, "best_map": 25.3, "best_epoch": 35, "current_rank1": 24.3, "current_map": 23.9, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/3/3log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.7, "best_map": 72.3, "best_epoch": 48, "current_rank1": 75.6, "current_map": 71.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/3/3log.txt"}}, {"trial": 4, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 32.4, "best_map": 31.3, "best_epoch": 33, "current_rank1": 29.4, "current_map": 29.2, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/4/4log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 73.0, "best_map": 68.8, "best_epoch": 41, "current_rank1": 72.1, "current_map": 68.1, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/4/4log.txt"}}, {"trial": 5, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 26.3, "best_map": 26.8, "best_epoch": 13, "current_rank1": 20.5, "current_map": 20.8, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/5/5log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 76.7, "best_map": 70.7, "best_epoch": 37, "current_rank1": 75.5, "current_map": 70.4, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/5/5log.txt"}}, {"trial": 6, "stage1": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 24.9, "best_map": 24.0, "best_epoch": 16, "current_rank1": 19.0, "current_map": 19.9, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/6/6log.txt"}, "stage2": {"exists": true, "complete": true, "epoch": 49, "best_rank1": 74.5, "best_map": 68.8, "best_epoch": 38, "current_rank1": 72.0, "current_map": 67.5, "log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/6/6log.txt"}}, {"trial": 7, "stage1": {"exists": true, "complete": false, "epoch": 1, "best_rank1": 13.4, "best_map": 14.1, "best_epoch": 1, "current_rank1": 13.4, "current_map": 14.1, "log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/7/7log.txt"}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 8, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 9, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 10, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}], "status": "incomplete", "official_rank": null, "std_best_rank1": 2.629110538228131, "min_best_rank1": 73.0, "trial_best_rank1_values": [74.2, 81.1, 76.7, 73.0, 76.7, 74.5]}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "stage1": "regdb_s1_hp10_s2_p010", "stage2": "regdb_s2_hp10_s2_p010_cgcf", "source": "strict_search", "expected_trials": 10, "complete_trials": 0, "mean_best_rank1": null, "mean_best_map": null, "max_best_rank1": null, "max_best_map": null, "trials": [{"trial": 1, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 2, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 3, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 4, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 5, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 6, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 7, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 8, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 9, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}, {"trial": 10, "stage1": {"exists": false, "complete": false, "epoch": null}, "stage2": {"exists": false, "complete": false, "epoch": null}}], "status": "incomplete", "official_rank": null, "std_best_rank1": null, "min_best_rank1": null, "trial_best_rank1_values": []}], "trial_rows": [{"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 1, "stage1_status": "complete", "stage1_best_rank1": 25.7, "stage1_best_map": 26.2, "stage1_best_epoch": 17, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/1/1log.txt", "stage2_status": "complete", "stage2_best_rank1": 89.2, "stage2_best_map": 83.3, "stage2_best_epoch": 38, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/1/1log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 2, "stage1_status": "complete", "stage1_best_rank1": 29.3, "stage1_best_map": 28.0, "stage1_best_epoch": 17, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/2/2log.txt", "stage2_status": "complete", "stage2_best_rank1": 85.0, "stage2_best_map": 77.8, "stage2_best_epoch": 39, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/2/2log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 3, "stage1_status": "complete", "stage1_best_rank1": 28.7, "stage1_best_map": 28.8, "stage1_best_epoch": 28, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/3/3log.txt", "stage2_status": "complete", "stage2_best_rank1": 86.1, "stage2_best_map": 81.0, "stage2_best_epoch": 38, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/3/3log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 4, "stage1_status": "complete", "stage1_best_rank1": 33.8, "stage1_best_map": 33.2, "stage1_best_epoch": 48, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/4/4log.txt", "stage2_status": "complete", "stage2_best_rank1": 76.6, "stage2_best_map": 72.3, "stage2_best_epoch": 45, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/4/4log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 5, "stage1_status": "complete", "stage1_best_rank1": 36.5, "stage1_best_map": 34.8, "stage1_best_epoch": 36, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/5/5log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.0, "stage2_best_map": 78.6, "stage2_best_epoch": 40, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/5/5log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 6, "stage1_status": "complete", "stage1_best_rank1": 24.8, "stage1_best_map": 24.7, "stage1_best_epoch": 11, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/6/6log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.2, "stage2_best_map": 78.7, "stage2_best_epoch": 45, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/6/6log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 7, "stage1_status": "complete", "stage1_best_rank1": 27.8, "stage1_best_map": 27.7, "stage1_best_epoch": 46, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/7/7log.txt", "stage2_status": "complete", "stage2_best_rank1": 81.5, "stage2_best_map": 75.6, "stage2_best_epoch": 49, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/7/7log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 8, "stage1_status": "complete", "stage1_best_rank1": 27.0, "stage1_best_map": 28.5, "stage1_best_epoch": 30, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/8/8log.txt", "stage2_status": "complete", "stage2_best_rank1": 88.6, "stage2_best_map": 84.0, "stage2_best_epoch": 46, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/8/8log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 9, "stage1_status": "complete", "stage1_best_rank1": 30.5, "stage1_best_map": 30.2, "stage1_best_epoch": 31, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/9/9log.txt", "stage2_status": "complete", "stage2_best_rank1": 86.6, "stage2_best_map": 80.9, "stage2_best_epoch": 39, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/9/9log.txt"}, {"tag": "s2_p005", "samples": 2, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 10, "stage1_status": "complete", "stage1_best_rank1": 33.1, "stage1_best_map": 31.9, "stage1_best_epoch": 42, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s2_p005/10/10log.txt", "stage2_status": "complete", "stage2_best_rank1": 91.2, "stage2_best_map": 84.8, "stage2_best_epoch": 41, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s2_p005_cgcf/10/10log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 1, "stage1_status": "complete", "stage1_best_rank1": 77.8, "stage1_best_map": 72.3, "stage1_best_epoch": 43, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/1/1log.txt", "stage2_status": "complete", "stage2_best_rank1": 77.1, "stage2_best_map": 71.8, "stage2_best_epoch": 40, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/1/1log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 2, "stage1_status": "complete", "stage1_best_rank1": 77.4, "stage1_best_map": 72.1, "stage1_best_epoch": 32, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/2/2log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.1, "stage2_best_map": 77.5, "stage2_best_epoch": 47, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/2/2log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 3, "stage1_status": "complete", "stage1_best_rank1": 87.0, "stage1_best_map": 82.6, "stage1_best_epoch": 47, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/3/3log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.1, "stage2_best_map": 79.9, "stage2_best_epoch": 47, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/3/3log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 4, "stage1_status": "complete", "stage1_best_rank1": 79.9, "stage1_best_map": 75.8, "stage1_best_epoch": 39, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/4/4log.txt", "stage2_status": "complete", "stage2_best_rank1": 85.6, "stage2_best_map": 79.8, "stage2_best_epoch": 45, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/4/4log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 5, "stage1_status": "complete", "stage1_best_rank1": 83.3, "stage1_best_map": 76.7, "stage1_best_epoch": 46, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/5/5log.txt", "stage2_status": "complete", "stage2_best_rank1": 89.8, "stage2_best_map": 82.6, "stage2_best_epoch": 41, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/5/5log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 6, "stage1_status": "complete", "stage1_best_rank1": 77.7, "stage1_best_map": 73.0, "stage1_best_epoch": 48, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/6/6log.txt", "stage2_status": "complete", "stage2_best_rank1": 76.3, "stage2_best_map": 70.2, "stage2_best_epoch": 49, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/6/6log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 7, "stage1_status": "complete", "stage1_best_rank1": 76.8, "stage1_best_map": 72.2, "stage1_best_epoch": 25, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/7/7log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.9, "stage2_best_map": 79.8, "stage2_best_epoch": 49, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/7/7log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 8, "stage1_status": "complete", "stage1_best_rank1": 88.2, "stage1_best_map": 83.5, "stage1_best_epoch": 47, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/8/8log.txt", "stage2_status": "complete", "stage2_best_rank1": 85.3, "stage2_best_map": 80.2, "stage2_best_epoch": 29, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/8/8log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 9, "stage1_status": "complete", "stage1_best_rank1": 82.8, "stage1_best_map": 78.4, "stage1_best_epoch": 47, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/9/9log.txt", "stage2_status": "complete", "stage2_best_rank1": 84.7, "stage2_best_map": 79.5, "stage2_best_epoch": 48, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/9/9log.txt"}, {"tag": "s3_p010", "samples": 3, "dropout": 0.1, "source": "completed_paper_setting", "candidate_status": "complete", "trial": 10, "stage1_status": "complete", "stage1_best_rank1": 92.0, "stage1_best_map": 85.9, "stage1_best_epoch": 49, "stage1_log_path": "/agent/regdb/logs/regdb_s1_amp10_mdue/10/10log.txt", "stage2_status": "complete", "stage2_best_rank1": 89.7, "stage2_best_map": 83.3, "stage2_best_epoch": 34, "stage2_log_path": "/agent/regdb/logs/regdb_s2_amp10_mdue_cgcf/10/10log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 1, "stage1_status": "complete", "stage1_best_rank1": 29.6, "stage1_best_map": 30.0, "stage1_best_epoch": 27, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/1/1log.txt", "stage2_status": "complete", "stage2_best_rank1": 80.5, "stage2_best_map": 75.4, "stage2_best_epoch": 34, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/1/1log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 2, "stage1_status": "complete", "stage1_best_rank1": 26.9, "stage1_best_map": 27.4, "stage1_best_epoch": 27, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/2/2log.txt", "stage2_status": "complete", "stage2_best_rank1": 86.0, "stage2_best_map": 79.6, "stage2_best_epoch": 43, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/2/2log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 3, "stage1_status": "complete", "stage1_best_rank1": 27.6, "stage1_best_map": 27.6, "stage1_best_epoch": 26, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/3/3log.txt", "stage2_status": "complete", "stage2_best_rank1": 85.6, "stage2_best_map": 81.7, "stage2_best_epoch": 40, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/3/3log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 4, "stage1_status": "complete", "stage1_best_rank1": 27.4, "stage1_best_map": 27.9, "stage1_best_epoch": 23, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/4/4log.txt", "stage2_status": "complete", "stage2_best_rank1": 80.0, "stage2_best_map": 75.6, "stage2_best_epoch": 43, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/4/4log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 5, "stage1_status": "complete", "stage1_best_rank1": 26.8, "stage1_best_map": 26.2, "stage1_best_epoch": 33, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/5/5log.txt", "stage2_status": "complete", "stage2_best_rank1": 91.4, "stage2_best_map": 84.0, "stage2_best_epoch": 32, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/5/5log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 6, "stage1_status": "complete", "stage1_best_rank1": 23.3, "stage1_best_map": 23.7, "stage1_best_epoch": 49, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/6/6log.txt", "stage2_status": "complete", "stage2_best_rank1": 76.6, "stage2_best_map": 71.2, "stage2_best_epoch": 48, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/6/6log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 7, "stage1_status": "complete", "stage1_best_rank1": 23.7, "stage1_best_map": 23.8, "stage1_best_epoch": 16, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/7/7log.txt", "stage2_status": "complete", "stage2_best_rank1": 72.2, "stage2_best_map": 67.1, "stage2_best_epoch": 42, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/7/7log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 8, "stage1_status": "complete", "stage1_best_rank1": 30.2, "stage1_best_map": 30.3, "stage1_best_epoch": 45, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/8/8log.txt", "stage2_status": "complete", "stage2_best_rank1": 89.5, "stage2_best_map": 85.5, "stage2_best_epoch": 49, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/8/8log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 9, "stage1_status": "complete", "stage1_best_rank1": 28.6, "stage1_best_map": 28.4, "stage1_best_epoch": 15, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/9/9log.txt", "stage2_status": "complete", "stage2_best_rank1": 87.1, "stage2_best_map": 80.3, "stage2_best_epoch": 37, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/9/9log.txt"}, {"tag": "s3_p005", "samples": 3, "dropout": 0.05, "source": "strict_search", "candidate_status": "complete", "trial": 10, "stage1_status": "complete", "stage1_best_rank1": 32.5, "stage1_best_map": 30.9, "stage1_best_epoch": 39, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s3_p005/10/10log.txt", "stage2_status": "complete", "stage2_best_rank1": 80.4, "stage2_best_map": 74.7, "stage2_best_epoch": 35, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s3_p005_cgcf/10/10log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 1, "stage1_status": "complete", "stage1_best_rank1": 25.1, "stage1_best_map": 26.1, "stage1_best_epoch": 24, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/1/1log.txt", "stage2_status": "complete", "stage2_best_rank1": 74.2, "stage2_best_map": 70.4, "stage2_best_epoch": 45, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/1/1log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 2, "stage1_status": "complete", "stage1_best_rank1": 29.0, "stage1_best_map": 29.7, "stage1_best_epoch": 33, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/2/2log.txt", "stage2_status": "complete", "stage2_best_rank1": 81.1, "stage2_best_map": 75.0, "stage2_best_epoch": 47, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/2/2log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 3, "stage1_status": "complete", "stage1_best_rank1": 26.1, "stage1_best_map": 25.3, "stage1_best_epoch": 35, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/3/3log.txt", "stage2_status": "complete", "stage2_best_rank1": 76.7, "stage2_best_map": 72.3, "stage2_best_epoch": 48, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/3/3log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 4, "stage1_status": "complete", "stage1_best_rank1": 32.4, "stage1_best_map": 31.3, "stage1_best_epoch": 33, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/4/4log.txt", "stage2_status": "complete", "stage2_best_rank1": 73.0, "stage2_best_map": 68.8, "stage2_best_epoch": 41, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/4/4log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 5, "stage1_status": "complete", "stage1_best_rank1": 26.3, "stage1_best_map": 26.8, "stage1_best_epoch": 13, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/5/5log.txt", "stage2_status": "complete", "stage2_best_rank1": 76.7, "stage2_best_map": 70.7, "stage2_best_epoch": 37, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/5/5log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 6, "stage1_status": "complete", "stage1_best_rank1": 24.9, "stage1_best_map": 24.0, "stage1_best_epoch": 16, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/6/6log.txt", "stage2_status": "complete", "stage2_best_rank1": 74.5, "stage2_best_map": 68.8, "stage2_best_epoch": 38, "stage2_log_path": "/agent/regdb/logs/regdb_s2_hp10_s4_p005_cgcf/6/6log.txt"}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 7, "stage1_status": "started", "stage1_best_rank1": 13.4, "stage1_best_map": 14.1, "stage1_best_epoch": 1, "stage1_log_path": "/agent/regdb/logs/regdb_s1_hp10_s4_p005/7/7log.txt", "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 8, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 9, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s4_p005", "samples": 4, "dropout": 0.05, "source": "strict_search", "candidate_status": "incomplete", "trial": 10, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 1, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 2, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 3, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 4, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 5, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 6, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 7, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 8, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 9, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}, {"tag": "s2_p010", "samples": 2, "dropout": 0.1, "source": "strict_search", "candidate_status": "incomplete", "trial": 10, "stage1_status": "missing", "stage1_best_rank1": null, "stage1_best_map": null, "stage1_best_epoch": null, "stage1_log_path": null, "stage2_status": "missing", "stage2_best_rank1": null, "stage2_best_map": null, "stage2_best_epoch": null, "stage2_log_path": null}]};
+const summaryColumns = [
+  ["official_rank", "Rank", "num"],
+  ["tag", "Tag", ""],
+  ["status", "Status", ""],
+  ["samples", "S", "num"],
+  ["dropout", "p", "num"],
+  ["complete_trials", "Done", "num"],
+  ["mean_best_rank1", "Mean Rank-1", "metric"],
+  ["mean_best_map", "Mean mAP", "metric"],
+  ["std_best_rank1", "Std Rank-1", "num"],
+  ["min_best_rank1", "Min Rank-1", "metric"],
+  ["max_best_rank1", "Max Rank-1", "metric"],
+  ["source", "Source", ""],
+];
+const trialColumns = [
+  ["tag", "Tag", ""],
+  ["trial", "Trial", "num"],
+  ["samples", "S", "num"],
+  ["dropout", "p", "num"],
+  ["stage1_status", "Stage1", ""],
+  ["stage1_best_rank1", "S1 R1", "metric"],
+  ["stage1_best_map", "S1 mAP", "metric"],
+  ["stage2_status", "Stage2", ""],
+  ["stage2_best_rank1", "S2 R1", "metric"],
+  ["stage2_best_map", "S2 mAP", "metric"],
+  ["stage2_best_epoch", "S2 best epoch", "num"],
+  ["source", "Source", ""],
+  ["stage2_log_path", "Stage2 log", "mono"],
+];
+let summarySort = {key: "official_rank", dir: "asc"};
+let trialSort = {key: "tag", dir: "asc"};
+
+function pct(value) {
+  return value === null || value === undefined || Number.isNaN(Number(value)) ? "-" : Number(value).toFixed(2);
+}
+function text(value) {
+  return value === null || value === undefined || value === "" ? "-" : String(value);
+}
+function rank(value) {
+  return value === null || value === undefined ? "not ranked" : String(value);
+}
+function metricStyle(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "";
+  const t = Math.max(0, Math.min(1, Number(value) / 100));
+  const hue = 8 + 132 * t;
+  return `background:hsl(${hue} 78% 92%); color:#172033;`;
+}
+function escapeHtml(value) {
+  return text(value).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+}
+function selectedValues(id) {
+  return Array.from(document.getElementById(id).selectedOptions).map(o => o.value);
+}
+function setOptions(id, values, labels = {}) {
+  const node = document.getElementById(id);
+  node.innerHTML = values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(labels[value] || value)}</option>`).join("");
+}
+function compare(a, b) {
+  if (a === null || a === undefined) return 1;
+  if (b === null || b === undefined) return -1;
+  const an = Number(a);
+  const bn = Number(b);
+  if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
+  return String(a).localeCompare(String(b));
+}
+function sortRows(rows, state) {
+  return [...rows].sort((a, b) => {
+    const result = compare(a[state.key], b[state.key]);
+    return state.dir === "asc" ? result : -result;
+  });
+}
+function statusPill(value) {
+  return `<span class="pill ${escapeHtml(value)}">${escapeHtml(value)}</span>`;
+}
+function cellHtml(row, column) {
+  const [key, , kind] = column;
+  const value = row[key];
+  if (key === "official_rank") return rank(value);
+  if (key === "complete_trials") return `${row.complete_trials}/${row.expected_trials}`;
+  if (key.endsWith("_status") || key === "status") return statusPill(value);
+  if (kind === "metric") return `<span>${pct(value)}</span>`;
+  if (kind === "num") return escapeHtml(pct(value));
+  if (kind === "mono") return `<span class="mono" title="${escapeHtml(value)}">${escapeHtml(value)}</span>`;
+  return escapeHtml(value);
+}
+function renderTable(id, columns, rows, state, onSort, rowClass) {
+  const table = document.getElementById(id);
+  const headers = columns.map(([key, label, kind]) => {
+    const arrow = state.key === key ? (state.dir === "asc" ? " ▲" : " ▼") : "";
+    return `<th class="${kind === "num" || kind === "metric" ? "num" : ""}" data-key="${key}">${label}${arrow}</th>`;
+  }).join("");
+  const body = rows.map(row => {
+    const cells = columns.map(column => {
+      const kind = column[2];
+      const style = kind === "metric" ? metricStyle(row[column[0]]) : "";
+      const cls = kind === "num" || kind === "metric" ? "num" : "";
+      return `<td class="${cls}" style="${style}">${cellHtml(row, column)}</td>`;
+    }).join("");
+    return `<tr class="${rowClass ? rowClass(row) : ""}">${cells}</tr>`;
+  }).join("");
+  table.innerHTML = `<thead><tr>${headers}</tr></thead><tbody>${body || `<tr><td colspan="${columns.length}">No rows match the current filters.</td></tr>`}</tbody>`;
+  table.querySelectorAll("th").forEach(th => {
+    th.addEventListener("click", () => onSort(th.dataset.key));
+  });
+}
+function includesAny(value, selected) {
+  return selected.length === 0 || selected.includes(String(value));
+}
+function renderCards() {
+  const v = PAYLOAD.validation;
+  const best = PAYLOAD.best;
+  const cards = [
+    ["Best completed config", best ? `${best.tag}` : "-", best ? `S=${best.samples}, p=${Number(best.dropout).toFixed(2)}; mean R1 ${pct(best.mean_best_rank1)} / mAP ${pct(best.mean_best_map)}` : "No completed 10-trial candidate"],
+    ["Completed candidates", `${v.complete_candidate_count}/${v.candidate_count}`, `${v.complete_trial_count}/${v.expected_trial_count} stage2 trials complete`],
+    ["Ranking scope", v.best_scope, v.all_candidates_complete ? "All planned candidates completed" : `Incomplete: ${v.incomplete_candidates.join(", ")}`],
+    ["Generated", PAYLOAD.manifest.generated_at, PAYLOAD.manifest.dataset],
+  ];
+  document.getElementById("cards").innerHTML = cards.map(([label, value, detail]) => `
+    <article class="card">
+      <div class="label">${escapeHtml(label)}</div>
+      <div class="value">${escapeHtml(value)}</div>
+      <div class="detail">${escapeHtml(detail)}</div>
+    </article>`).join("");
+}
+function renderNotes() {
+  const notes = [];
+  if (PAYLOAD.manifest.status_note) notes.push(`<div class="note">${escapeHtml(PAYLOAD.manifest.status_note)}</div>`);
+  if (PAYLOAD.manifest.failure_note) notes.push(`<div class="note strong">${escapeHtml(PAYLOAD.manifest.failure_note)}</div>`);
+  if (!PAYLOAD.validation.all_candidates_complete) {
+    notes.push(`<div class="note strong">Search is not fully complete. Official best is selected only from candidates with 10/10 completed trials.</div>`);
+  }
+  document.getElementById("statusNotes").innerHTML = notes.join("");
+}
+function filteredSummaryRows() {
+  const query = document.getElementById("summarySearch").value.trim().toLowerCase();
+  const statuses = selectedValues("statusFilter");
+  const sources = selectedValues("sourceFilter");
+  const samples = selectedValues("sampleFilter");
+  return PAYLOAD.summary_rows.filter(row => {
+    const haystack = [row.tag, row.source, row.status, row.samples, row.dropout].join(" ").toLowerCase();
+    return (!query || haystack.includes(query))
+      && includesAny(row.status, statuses)
+      && includesAny(row.source, sources)
+      && includesAny(row.samples, samples);
+  });
+}
+function filteredTrialRows() {
+  const query = document.getElementById("trialSearch").value.trim().toLowerCase();
+  const statuses = selectedValues("trialStatusFilter");
+  const tags = selectedValues("tagFilter");
+  const sources = selectedValues("trialSourceFilter");
+  return PAYLOAD.trial_rows.filter(row => {
+    const haystack = [row.tag, row.trial, row.stage2_status, row.source, row.stage2_log_path].join(" ").toLowerCase();
+    return (!query || haystack.includes(query))
+      && includesAny(row.stage2_status, statuses)
+      && includesAny(row.tag, tags)
+      && includesAny(row.source, sources);
+  });
+}
+function renderSummary() {
+  renderTable("summaryTable", summaryColumns, sortRows(filteredSummaryRows(), summarySort), summarySort, key => {
+    summarySort = {key, dir: summarySort.key === key && summarySort.dir === "asc" ? "desc" : "asc"};
+    renderSummary();
+  }, row => row.official_rank === 1 ? "best-row" : "");
+}
+function renderTrials() {
+  renderTable("trialTable", trialColumns, sortRows(filteredTrialRows(), trialSort), trialSort, key => {
+    trialSort = {key, dir: trialSort.key === key && trialSort.dir === "asc" ? "desc" : "asc"};
+    renderTrials();
+  });
+}
+function csvEscape(value) {
+  const s = text(value);
+  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+function downloadCsv(name, columns, rows) {
+  const lines = [columns.map(c => csvEscape(c[1])).join(",")];
+  rows.forEach(row => lines.push(columns.map(c => csvEscape(row[c[0]])).join(",")));
+  const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function init() {
+  const summaryRows = PAYLOAD.summary_rows;
+  const trialRows = PAYLOAD.trial_rows;
+  setOptions("statusFilter", [...new Set(summaryRows.map(r => r.status))]);
+  setOptions("sourceFilter", [...new Set(summaryRows.map(r => r.source))]);
+  setOptions("sampleFilter", [...new Set(summaryRows.map(r => String(r.samples)))]);
+  setOptions("trialStatusFilter", [...new Set(trialRows.map(r => r.stage2_status))]);
+  setOptions("tagFilter", [...new Set(trialRows.map(r => r.tag))]);
+  setOptions("trialSourceFilter", [...new Set(trialRows.map(r => r.source))]);
+  ["summarySearch", "statusFilter", "sourceFilter", "sampleFilter"].forEach(id => document.getElementById(id).addEventListener("input", renderSummary));
+  ["trialSearch", "trialStatusFilter", "tagFilter", "trialSourceFilter"].forEach(id => document.getElementById(id).addEventListener("input", renderTrials));
+  document.getElementById("clearFilters").addEventListener("click", () => {
+    document.getElementById("summarySearch").value = "";
+    ["statusFilter", "sourceFilter", "sampleFilter"].forEach(id => Array.from(document.getElementById(id).options).forEach(o => o.selected = false));
+    renderSummary();
+  });
+  document.getElementById("clearTrialFilters").addEventListener("click", () => {
+    document.getElementById("trialSearch").value = "";
+    ["trialStatusFilter", "tagFilter", "trialSourceFilter"].forEach(id => Array.from(document.getElementById(id).options).forEach(o => o.selected = false));
+    renderTrials();
+  });
+  document.getElementById("downloadSummary").addEventListener("click", () => downloadCsv("regdb_hp_search_summary.csv", summaryColumns, filteredSummaryRows()));
+  document.getElementById("downloadTrials").addEventListener("click", () => downloadCsv("regdb_hp_search_trials.csv", trialColumns, filteredTrialRows()));
+  renderCards();
+  renderNotes();
+  renderSummary();
+  renderTrials();
+}
+init();
+</script>
+</body>
+</html>
