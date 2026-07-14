@@ -27,6 +27,15 @@ from clustercontrast.utils.logging import Logger
 from clustercontrast.utils.serialization import load_checkpoint, save_checkpoint
 from clustercontrast.utils.faiss_rerank import compute_jaccard_distance
 from clustercontrast.utils.data.sampler import RandomMultipleGallerySampler, RandomMultipleGallerySamplerNoCam
+from clustercontrast.utils.eval_protocol import (
+    TestData,
+    eval_regdb,
+    extract_regdb_gallery_features as extract_gall_feat,
+    extract_regdb_query_features as extract_query_feat,
+    pairwise_distance,
+    process_test_regdb,
+)
+from clustercontrast.utils.path_utils import warn_relative_data_dir
 import os
 import torch.utils.data as data
 from torch.autograd import Variable
@@ -124,6 +133,7 @@ def create_model(args):
 
 def main():
     args = parser.parse_args()
+    warn_relative_data_dir(args.data_dir)
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -131,180 +141,6 @@ def main():
         torch.manual_seed(args.seed)
         cudnn.deterministic = True
     main_worker(args)
-
-class TestData(data.Dataset):
-    def __init__(self, test_img_file, test_label, transform=None, img_size = (144,288)):
-
-        test_image = []
-        for i in range(len(test_img_file)):
-            img = Image.open(test_img_file[i])
-            img = img.resize((img_size[0], img_size[1]), Image.LANCZOS)
-            pix_array = np.array(img)
-            test_image.append(pix_array)
-        test_image = np.array(test_image)
-        self.test_image = test_image
-        self.test_label = test_label
-        self.transform = transform
-
-    def __getitem__(self, index):
-        img1,  target1 = self.test_image[index],  self.test_label[index]
-        img1 = self.transform(img1)
-        return img1, target1
-
-    def __len__(self):
-        return len(self.test_image)
-
-
-def fliplr(img):
-    '''flip horizontal'''
-    inv_idx = torch.arange(img.size(3)-1,-1,-1).long()  # N x C x H x W
-    img_flip = img.index_select(3,inv_idx)
-    return img_flip
-def extract_gall_feat(model,gall_loader,ngall):
-    pool_dim=2048
-    net = model
-    net.eval()
-    print ('Extracting Gallery Feature...')
-    start = time.time()
-    ptr = 0
-    gall_feat_pool = np.zeros((ngall, pool_dim))
-    gall_feat_fc = np.zeros((ngall, pool_dim))
-    with torch.no_grad():
-        for batch_idx, (input, label ) in enumerate(gall_loader):
-            batch_num = input.size(0)
-            flip_input = fliplr(input)
-            input = Variable(input.cuda())
-            feat_fc = net( input,input, 2)
-            flip_input = Variable(flip_input.cuda())
-            feat_fc_1 = net( flip_input,flip_input, 2)
-            feature_fc = (feat_fc.detach() + feat_fc_1.detach())/2
-            fnorm_fc = torch.norm(feature_fc, p=2, dim=1, keepdim=True)
-            feature_fc = feature_fc.div(fnorm_fc.expand_as(feature_fc))
-            gall_feat_fc[ptr:ptr+batch_num,: ]   = feature_fc.cpu().numpy()
-            ptr = ptr + batch_num
-    print('Extracting Time:\t {:.3f}'.format(time.time()-start))
-    return gall_feat_fc
-    
-def extract_query_feat(model,query_loader,nquery):
-    pool_dim=2048
-    net = model
-    net.eval()
-    print ('Extracting Query Feature...')
-    start = time.time()
-    ptr = 0
-    query_feat_pool = np.zeros((nquery, pool_dim))
-    query_feat_fc = np.zeros((nquery, pool_dim))
-    with torch.no_grad():
-        for batch_idx, (input, label ) in enumerate(query_loader):
-            batch_num = input.size(0)
-            flip_input = fliplr(input)
-            input = Variable(input.cuda())
-            feat_fc = net( input, input,1)
-            flip_input = Variable(flip_input.cuda())
-            feat_fc_1 = net( flip_input,flip_input, 1)
-            feature_fc = (feat_fc.detach() + feat_fc_1.detach())/2
-            fnorm_fc = torch.norm(feature_fc, p=2, dim=1, keepdim=True)
-            feature_fc = feature_fc.div(fnorm_fc.expand_as(feature_fc))
-            query_feat_fc[ptr:ptr+batch_num,: ]   = feature_fc.cpu().numpy()
-            
-            ptr = ptr + batch_num         
-    print('Extracting Time:\t {:.3f}'.format(time.time()-start))
-    return query_feat_fc
-
-
-
-
-def pairwise_distance(features_q, features_g):
-    x = torch.from_numpy(features_q)
-    y = torch.from_numpy(features_g)
-    m, n = x.size(0), y.size(0)
-    x = x.view(m, -1)
-    y = y.view(n, -1)
-    dist_m = torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n) + \
-           torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-    dist_m.addmm_(1, -2, x, y.t())
-    return dist_m.numpy()
-
-
-
-
-def process_test_regdb(img_dir, trial = 1, modal = 'visible'):
-    if modal=='visible':
-        input_data_path = osp.join(img_dir, 'idx', 'test_visible_{}.txt'.format(trial))
-    elif modal=='thermal':
-        input_data_path = osp.join(img_dir, 'idx', 'test_thermal_{}.txt'.format(trial))
-
-    with open(input_data_path) as f:
-        data_file_list = open(input_data_path, 'rt').read().splitlines()
-        # Get full list of image and labels
-        file_image = [osp.join(img_dir, s.split(' ')[0]) for s in data_file_list]
-        file_label = [int(s.split(' ')[1]) for s in data_file_list]
-        
-    return file_image, np.array(file_label)
-def eval_regdb(distmat, q_pids, g_pids, max_rank = 20):
-    num_q, num_g = distmat.shape
-    if num_g < max_rank:
-        max_rank = num_g
-        print("Note: number of gallery samples is quite small, got {}".format(num_g))
-    indices = np.argsort(distmat, axis=1)
-    matches = (g_pids[indices] == q_pids[:, np.newaxis]).astype(np.int32)
-
-    # compute cmc curve for each query
-    all_cmc = []
-    all_AP = []
-    all_INP = []
-    num_valid_q = 0. # number of valid query
-    
-    # only two cameras
-    q_camids = np.ones(num_q).astype(np.int32)
-    g_camids = 2* np.ones(num_g).astype(np.int32)
-    
-    for q_idx in range(num_q):
-        # get query pid and camid
-        q_pid = q_pids[q_idx]
-        q_camid = q_camids[q_idx]
-
-        # remove gallery samples that have the same pid and camid with query
-        order = indices[q_idx]
-        remove = (g_pids[order] == q_pid) & (g_camids[order] == q_camid)
-        keep = np.invert(remove)
-
-        # compute cmc curve
-        raw_cmc = matches[q_idx][keep] # binary vector, positions with value 1 are correct matches
-        if not np.any(raw_cmc):
-            # this condition is true when query identity does not appear in gallery
-            continue
-
-        cmc = raw_cmc.cumsum()
-
-        # compute mINP
-        # refernece Deep Learning for Person Re-identification: A Survey and Outlook
-        pos_idx = np.where(raw_cmc == 1)
-        pos_max_idx = np.max(pos_idx)
-        inp = cmc[pos_max_idx]/ (pos_max_idx + 1.0)
-        all_INP.append(inp)
-
-        cmc[cmc > 1] = 1
-
-        all_cmc.append(cmc[:max_rank])
-        num_valid_q += 1.
-
-        # compute average precision
-        # reference: https://en.wikipedia.org/wiki/Evaluation_measures_(information_retrieval)#Average_precision
-        num_rel = raw_cmc.sum()
-        tmp_cmc = raw_cmc.cumsum()
-        tmp_cmc = [x / (i+1.) for i, x in enumerate(tmp_cmc)]
-        tmp_cmc = np.asarray(tmp_cmc) * raw_cmc
-        AP = tmp_cmc.sum() / num_rel
-        all_AP.append(AP)
-
-    assert num_valid_q > 0, "Error: all query identities do not appear in gallery"
-
-    all_cmc = np.asarray(all_cmc).astype(np.float32)
-    all_cmc = all_cmc.sum(0) / num_valid_q
-    mAP = np.mean(all_AP)
-    mINP = np.mean(all_INP)
-    return all_cmc, mAP, mINP
 
 def main_worker(args):
     log_name='regdb_s2'#model path
@@ -482,7 +318,7 @@ if __name__ == '__main__':
     # path
     working_dir = osp.dirname(osp.abspath(__file__))
     parser.add_argument('--data-dir', type=str, metavar='PATH',
-                        default=osp.join(working_dir, 'data'))
+                        default=osp.join('data', 'RegDB'))
     parser.add_argument('--logs-dir', type=str, metavar='PATH',
                         default=osp.join(working_dir, 'logs'))
     parser.add_argument('--pooling-type', type=str, default='gem')

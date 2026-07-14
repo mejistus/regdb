@@ -1,6 +1,7 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
-DATA_DIR=${DATA_DIR:-/mnt/datasets/RegDB}
+DATA_DIR=${DATA_DIR:-data/RegDB}
 LOGS_DIR=${LOGS_DIR:-logs}
 BATCH_SIZE=${BATCH_SIZE:-64}
 STAGE2_BATCH_SIZE=${STAGE2_BATCH_SIZE:-32}
@@ -26,6 +27,10 @@ if [ "$USE_CGCF" = "1" ]; then
 fi
 if [ -n "$STAGE1_LOGS_DIR" ]; then
   EXTRA_ARGS+=(--stage1-logs-dir "$STAGE1_LOGS_DIR")
+fi
+
+if [[ "$DATA_DIR" != /* ]]; then
+  printf '\033[31mWARNING: 您使用的是相对路径 --data-dir "%s"；请从仓库根目录运行，或确认数据已放在该相对路径下。\033[0m\n' "$DATA_DIR"
 fi
 
 for trial in $TRIALS

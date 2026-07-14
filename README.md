@@ -58,11 +58,11 @@ pip install -r requirements.txt
 Prepare the datasets by running:
 
 ```bash
-python prepare_sysu.py   # for SYSU-MM01
-python prepare_regdb.py  # for RegDB
+python prepare_sysu.py   # defaults to data/SYSU-MM01
+python prepare_regdb.py  # defaults to data/RegDB
 ```
 
-> ⚠️ **Note:** Modify the dataset paths in `prepare_sysu.py` and `prepare_regdb.py` to match your local environment.
+> ⚠️ **Note:** The default dataset paths are relative paths under this repository. If you use them directly, the scripts print a red warning reminding you to run from the repository root or place data in the shown relative path. You can override with `DATA_DIR=/path/to/dataset bash run_train_*.sh` or `--data-dir /path/to/dataset`.
 
 ---
 
@@ -71,10 +71,10 @@ Train the model using:
 
 ```bash
 # For SYSU-MM01
-sh run_train_sysu.sh
+bash run_train_sysu.sh
 
 # For RegDB
-sh run_train_regdb.sh
+bash run_train_regdb.sh
 ```
 
 You can adjust hyperparameters (batch size, learning rate, epochs, etc.) in the corresponding `.sh` or `.py` scripts.
@@ -86,10 +86,10 @@ Evaluate the trained model using:
 
 ```bash
 # For SYSU-MM01
-sh test_sysu.sh
+bash run_test_sysu.sh
 
 # For RegDB
-sh test_regdb.sh
+bash run_test_regdb.sh
 ```
 
 The testing script loads the trained checkpoint and computes metrics such as **Rank-1** and **mAP**.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="${ROOT:-/agent/regdb}"
 PYTHON="${PYTHON:-/mnt/conda/envs/regdb/bin/python}"
-DATA_DIR="${DATA_DIR:-/mnt/datasets/RegDB}"
+DATA_DIR="${DATA_DIR:-data/RegDB}"
 LOGS_DIR="${LOGS_DIR:-logs}"
 GPU="${CUDA_VISIBLE_DEVICES:-0}"
 
@@ -29,6 +29,9 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "PAPER_AMP_FULL_ABLATION_START:$(date -Is)"
 echo "ROOT:$ROOT GPU:$GPU TRIALS:$TRIALS EPOCHS:$EPOCHS ITERS:$ITERS"
+if [[ "$DATA_DIR" != /* ]]; then
+  printf '\033[31mWARNING: 您使用的是相对路径 --data-dir "%s"；请从仓库根目录运行，或确认数据已放在该相对路径下。\033[0m\n' "$DATA_DIR"
+fi
 
 free_gb() {
   df -BG "$ROOT" | awk 'NR==2 {gsub("G","",$4); print $4}'

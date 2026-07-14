@@ -37,10 +37,19 @@ from ChannelAug import ChannelAdap, ChannelAdapGray, ChannelRandomErasing, Chann
 from collections import Counter
 from scipy.optimize import linear_sum_assignment
 from IPython import embed
+from clustercontrast.utils.eval_protocol import (
+    TestData,
+    eval_sysu,
+    extract_sysu_gallery_features as extract_gall_feat,
+    extract_sysu_query_features as extract_query_feat,
+    process_gallery_sysu,
+    process_query_sysu,
+)
+from clustercontrast.utils.path_utils import warn_relative_data_dir
 
 
 def get_data(name, data_dir):
-    root = osp.join(data_dir, name)
+    root = data_dir if name in ('sysu_ir', 'sysu_rgb', 'sysu_all') else osp.join(data_dir, name)
     dataset = datasets.create(name, root)
     return dataset
 
@@ -125,230 +134,6 @@ def create_model(args):
     return model, model_ema
 
 
-class TestData(data.Dataset):
-    def __init__(self, test_img_file, test_label, transform=None, img_size=(144, 288)):
-        test_image = []
-        for i in range(len(test_img_file)):
-            img = Image.open(test_img_file[i])
-            img = img.resize((img_size[0], img_size[1]), Image.LANCZOS)
-            pix_array = np.array(img)
-            test_image.append(pix_array)
-        test_image = np.array(test_image)
-        self.test_image = test_image
-        self.test_label = test_label
-        self.transform = transform
-
-    def __getitem__(self, index):
-        img1, target1 = self.test_image[index], self.test_label[index]
-        img1 = self.transform(img1)
-        return img1, target1
-
-    def __len__(self):
-        return len(self.test_image)
-
-
-def process_query_sysu(data_path, mode='all', relabel=False):
-    if mode == 'all':
-        ir_cameras = ['cam3', 'cam6']
-    elif mode == 'indoor':
-        ir_cameras = ['cam3', 'cam6']
-
-    file_path = os.path.join(data_path, 'exp/test_id.txt')
-    files_rgb = []
-    files_ir = []
-
-    with open(file_path, 'r') as file:
-        ids = file.read().splitlines()
-        ids = [int(y) for y in ids[0].split(',')]
-        ids = ["%04d" % x for x in ids]
-
-    for id in sorted(ids):
-        for cam in ir_cameras:
-            img_dir = os.path.join(data_path, cam, id)
-            if os.path.isdir(img_dir):
-                new_files = sorted([img_dir + '/' + i for i in os.listdir(img_dir)])
-                files_ir.extend(new_files)
-    query_img = []
-    query_id = []
-    query_cam = []
-    for img_path in files_ir:
-        camid, pid = int(img_path[-15]), int(img_path[-13:-9])
-        query_img.append(img_path)
-        query_id.append(pid)
-        query_cam.append(camid)
-    return query_img, np.array(query_id), np.array(query_cam)
-
-
-def process_gallery_sysu(data_path, mode='all', trial=0, relabel=False):
-    random.seed(trial)
-
-    if mode == 'all':
-        rgb_cameras = ['cam1', 'cam2', 'cam4', 'cam5']
-    elif mode == 'indoor':
-        rgb_cameras = ['cam1', 'cam2']
-
-    file_path = os.path.join(data_path, 'exp/test_id.txt')
-    files_rgb = []
-    with open(file_path, 'r') as file:
-        ids = file.read().splitlines()
-        ids = [int(y) for y in ids[0].split(',')]
-        ids = ["%04d" % x for x in ids]
-
-    for id in sorted(ids):
-        for cam in rgb_cameras:
-            img_dir = os.path.join(data_path, cam, id)
-            if os.path.isdir(img_dir):
-                new_files = sorted([img_dir + '/' + i for i in os.listdir(img_dir)])
-                files_rgb.append(random.choice(new_files))
-    gall_img = []
-    gall_id = []
-    gall_cam = []
-    for img_path in files_rgb:
-        camid, pid = int(img_path[-15]), int(img_path[-13:-9])
-        gall_img.append(img_path)
-        gall_id.append(pid)
-        gall_cam.append(camid)
-    return gall_img, np.array(gall_id), np.array(gall_cam)
-
-
-def fliplr(img):
-    '''flip horizontal'''
-    inv_idx = torch.arange(img.size(3) - 1, -1, -1).long()  # N x C x H x W
-    img_flip = img.index_select(3, inv_idx)
-    return img_flip
-
-
-def extract_gall_feat(model, gall_loader, ngall):
-    pool_dim = 2048
-    net = model
-    net.eval()
-    print('Extracting Gallery Feature...')
-    start = time.time()
-    ptr = 0
-    gall_feat_pool = np.zeros((ngall, pool_dim))
-    gall_feat_fc = np.zeros((ngall, pool_dim))
-    with torch.no_grad():
-        for batch_idx, (input, label) in enumerate(gall_loader):
-            batch_num = input.size(0)
-            flip_input = fliplr(input)
-            input = Variable(input.cuda())
-            feat_fc = net(input, input, 1)
-            flip_input = Variable(flip_input.cuda())
-            feat_fc_1 = net(flip_input, flip_input, 1)
-            feature_fc = (feat_fc.detach() + feat_fc_1.detach()) / 2
-            fnorm_fc = torch.norm(feature_fc, p=2, dim=1, keepdim=True)
-            feature_fc = feature_fc.div(fnorm_fc.expand_as(feature_fc))
-            gall_feat_fc[ptr:ptr + batch_num, :] = feature_fc.cpu().numpy()
-            ptr = ptr + batch_num
-    print('Extracting Time:\t {:.3f}'.format(time.time() - start))
-    return gall_feat_fc
-
-
-def extract_query_feat(model, query_loader, nquery):
-    pool_dim = 2048
-    net = model
-    net.eval()
-    print('Extracting Query Feature...')
-    start = time.time()
-    ptr = 0
-    query_feat_pool = np.zeros((nquery, pool_dim))
-    query_feat_fc = np.zeros((nquery, pool_dim))
-    with torch.no_grad():
-        for batch_idx, (input, label) in enumerate(query_loader):
-            batch_num = input.size(0)
-            flip_input = fliplr(input)
-            input = Variable(input.cuda())
-            feat_fc = net(input, input, 2)
-            flip_input = Variable(flip_input.cuda())
-            feat_fc_1 = net(flip_input, flip_input, 2)
-            feature_fc = (feat_fc.detach() + feat_fc_1.detach()) / 2
-            fnorm_fc = torch.norm(feature_fc, p=2, dim=1, keepdim=True)
-            feature_fc = feature_fc.div(fnorm_fc.expand_as(feature_fc))
-            query_feat_fc[ptr:ptr + batch_num, :] = feature_fc.cpu().numpy()
-
-            ptr = ptr + batch_num
-    print('Extracting Time:\t {:.3f}'.format(time.time() - start))
-    return query_feat_fc
-
-
-def eval_sysu(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=20):
-    """Evaluation with sysu metric
-    Key: for each query identity, its gallery images from the same camera view are discarded. "Following the original setting in ite dataset"
-    """
-    num_q, num_g = distmat.shape
-    if num_g < max_rank:
-        max_rank = num_g
-        print("Note: number of gallery samples is quite small, got {}".format(num_g))
-    indices = np.argsort(distmat, axis=1)
-    pred_label = g_pids[indices]
-    matches = (g_pids[indices] == q_pids[:, np.newaxis]).astype(np.int32)
-
-    # compute cmc curve for each query
-    new_all_cmc = []
-    all_cmc = []
-    all_AP = []
-    all_INP = []
-    num_valid_q = 0.  # number of valid query
-    for q_idx in range(num_q):
-        # get query pid and camid
-        q_pid = q_pids[q_idx]
-        q_camid = q_camids[q_idx]
-
-        # remove gallery samples that have the same pid and camid with query
-        order = indices[q_idx]
-        remove = (q_camid == 3) & (g_camids[order] == 2)
-        keep = np.invert(remove)
-
-        # compute cmc curve
-        # the cmc calculation is different from standard protocol
-        # we follow the protocol of the author's released code
-        new_cmc = pred_label[q_idx][keep]
-        new_index = np.unique(new_cmc, return_index=True)[1]
-        new_cmc = [new_cmc[index] for index in sorted(new_index)]
-
-        new_match = (new_cmc == q_pid).astype(np.int32)
-        new_cmc = new_match.cumsum()
-        new_all_cmc.append(new_cmc[:max_rank])
-
-        orig_cmc = matches[q_idx][keep]  # binary vector, positions with value 1 are correct matches
-        if not np.any(orig_cmc):
-            # this condition is true when query identity does not appear in gallery
-            continue
-
-        cmc = orig_cmc.cumsum()
-
-        # compute mINP
-        # refernece Deep Learning for Person Re-identification: A Survey and Outlook
-        pos_idx = np.where(orig_cmc == 1)
-        pos_max_idx = np.max(pos_idx)
-        inp = cmc[pos_max_idx] / (pos_max_idx + 1.0)
-        all_INP.append(inp)
-
-        cmc[cmc > 1] = 1
-
-        all_cmc.append(cmc[:max_rank])
-        num_valid_q += 1.
-
-        # compute average precision
-        # reference: https://en.wikipedia.org/wiki/Evaluation_measures_(information_retrieval)#Average_precision
-        num_rel = orig_cmc.sum()
-        tmp_cmc = orig_cmc.cumsum()
-        tmp_cmc = [x / (i + 1.) for i, x in enumerate(tmp_cmc)]
-        tmp_cmc = np.asarray(tmp_cmc) * orig_cmc
-        AP = tmp_cmc.sum() / num_rel
-        all_AP.append(AP)
-
-    assert num_valid_q > 0, "Error: all query identities do not appear in gallery"
-
-    all_cmc = np.asarray(all_cmc).astype(np.float32)
-    all_cmc = all_cmc.sum(0) / num_valid_q  # standard CMC
-
-    new_all_cmc = np.asarray(new_all_cmc).astype(np.float32)
-    new_all_cmc = new_all_cmc.sum(0) / num_valid_q
-    mAP = np.mean(all_AP)
-    mINP = np.mean(all_INP)
-    return new_all_cmc, mAP, mINP
-
 def associated_analysis_for_all(all_origin, all_pred, image_paths_for_all, log_dir):
     label_count_all = -1
     all_label_set = list(set(all_pred))
@@ -382,6 +167,7 @@ def associated_analysis_for_all(all_origin, all_pred, image_paths_for_all, log_d
 
 def main():
     args = parser.parse_args()
+    warn_relative_data_dir(args.data_dir)
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -1335,7 +1121,7 @@ if __name__ == '__main__':
     # path
     working_dir = osp.dirname(osp.abspath(__file__))
     parser.add_argument('--data-dir', type=str, metavar='PATH',
-                        default=osp.join(working_dir, 'data'))
+                        default=osp.join('data', 'SYSU-MM01'))
     parser.add_argument('--logs-dir', type=str, metavar='PATH',
                         default=osp.join(working_dir, 'logs'))
     parser.add_argument('--pooling-type', type=str, default='gem')

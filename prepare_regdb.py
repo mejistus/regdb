@@ -7,12 +7,15 @@ import os
 import argparse
 from shutil import copyfile
 
+from clustercontrast.utils.path_utils import warn_if_relative_path
+
 parser = argparse.ArgumentParser(description='Prepare RegDB into Market1501-style folders.')
-parser.add_argument('--download-path', default=os.environ.get('REGDB_ROOT', '/mnt/datasets/RegDB'),
+parser.add_argument('--download-path', default=os.environ.get('REGDB_ROOT', 'data/RegDB'),
                     help='Path to the downloaded RegDB root containing idx/, visible/, and thermal/.')
 args = parser.parse_args()
 
 download_path = args.download_path.rstrip('/')
+warn_if_relative_path(download_path, '--download-path')
 
 if not os.path.isdir(download_path):
     raise SystemExit('please change the download_path')

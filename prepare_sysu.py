@@ -4,10 +4,19 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 """
 
 import os
+import argparse
 from shutil import copyfile
 
+from clustercontrast.utils.path_utils import warn_if_relative_path
+
 # You only need to change this line to your dataset download path
-download_path = 'data/sysu'
+parser = argparse.ArgumentParser(description='Prepare SYSU-MM01 into Market1501-style folders.')
+parser.add_argument('--download-path', default=os.environ.get('SYSU_ROOT', 'data/SYSU-MM01'),
+                    help='Path to the SYSU-MM01 root containing exp/ and cam*/ folders.')
+args = parser.parse_args()
+
+download_path = args.download_path.rstrip('/')
+warn_if_relative_path(download_path, '--download-path')
 
 if not os.path.isdir(download_path):
     print('please change the download_path')
